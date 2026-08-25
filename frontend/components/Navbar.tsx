@@ -6,7 +6,6 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import type { Anime } from '@/lib/api';
 import Image from 'next/image';
-import AuthButton from './AuthButton';
 
 export default function Navbar() {
   const router = useRouter();
@@ -200,9 +199,6 @@ export default function Navbar() {
             </button>
           )}
         </div>
-
-        {/* Auth / Sync button */}
-        <AuthButton />
 
         {/* Mobile hamburger */}
         <button
