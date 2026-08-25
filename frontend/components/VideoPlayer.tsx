@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import type { Server } from '@/lib/api';
 
 interface VideoPlayerProps {
-  servers: Server[];
+  servers: any[];
   title: string;
   onProgress?: (percent: number) => void;
 }
@@ -12,7 +12,8 @@ interface VideoPlayerProps {
 const EMBED_DOMAINS = [
   'embed', 'player', 'stream', 'drive.google', 'gdrive', 'mp4upload',
   'streamtape', 'doodstream', 'filemoon', 'vidplay', 'mega.nz',
-  'okru', 'yourupload', 'krakenfiles', 'files.fm', 'sbplay',
+  'okru', 'yourupload', 'krakenfiles', 'files.fm', 'sbplay', 'desustream',
+  'otakufiles', 'blogger.com', 'acefile', 'mediafire',
 ];
 
 function isEmbedUrl(url: string): boolean {
@@ -21,26 +22,55 @@ function isEmbedUrl(url: string): boolean {
     const u = new URL(url);
     return EMBED_DOMAINS.some((d) => u.hostname.includes(d) || u.pathname.includes(d));
   } catch {
-    return url.includes('embed') || url.includes('player') || url.includes('iframe');
+    return url.includes('embed') || url.includes('player') || url.includes('iframe') || url.startsWith('http');
   }
 }
 
-function getPreferredQuality(streams: Server['streams']): string {
-  const preferred = ['1080p', '720p', '480p', '360p'];
+function getPreferredQuality(streams: { quality: string; url: string }[]): string {
+  const preferred = ['HD', '1080p', '720p', '480p', '360p'];
   for (const q of preferred) {
-    const found = streams.find((s) => s.quality === q);
+    const found = streams.find((s) => s.quality.toLowerCase() === q.toLowerCase());
     if (found) return found.quality;
   }
   return streams[0]?.quality ?? '';
 }
 
-export default function VideoPlayer({ servers, title, onProgress }: VideoPlayerProps) {
+export default function VideoPlayer({ servers = [], title, onProgress }: VideoPlayerProps) {
+  // Normalize whatever format the backend returns into standard { server, streams: [{ quality, url }] }
+  const normalizedServers = useMemo(() => {
+    if (!Array.isArray(servers)) return [];
+    return servers.map((s, idx) => {
+      // Format 1: standard { server: string, streams: [{ quality, url }] }
+      if (s.server && Array.isArray(s.streams)) {
+        return {
+          server: s.server,
+          streams: s.streams.filter((st: any) => st && st.url),
+        };
+      }
+      // Format 2: { label: string, embedUrl: string }
+      if (s.embedUrl) {
+        return {
+          server: s.label || `Server ${idx + 1}`,
+          streams: [{ quality: 'HD', url: s.embedUrl }],
+        };
+      }
+      // Format 3: { quality: string, url: string }
+      if (s.url) {
+        return {
+          server: s.host || s.server || `Server ${idx + 1}`,
+          streams: [{ quality: s.quality || 'HD', url: s.url }],
+        };
+      }
+      return { server: `Server ${idx + 1}`, streams: [] };
+    }).filter((s) => s.streams.length > 0);
+  }, [servers]);
+
   const [selectedServer, setSelectedServer] = useState(0);
   const [selectedQuality, setSelectedQuality] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const currentServer = servers[selectedServer];
+  const currentServer = normalizedServers[selectedServer] || normalizedServers[0];
   const currentStreams = currentServer?.streams ?? [];
 
   // Set default quality when server changes
@@ -80,7 +110,6 @@ export default function VideoPlayer({ servers, title, onProgress }: VideoPlayerP
     const handler = (e: KeyboardEvent) => {
       const video = videoRef.current;
       if (!video || isEmbed) return;
-      // Don't trigger if user is in an input
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
 
       switch (e.key) {
@@ -112,31 +141,32 @@ export default function VideoPlayer({ servers, title, onProgress }: VideoPlayerP
     return () => document.removeEventListener('keydown', handler);
   }, [isEmbed]);
 
-  if (!servers || servers.length === 0) {
+  if (!normalizedServers || normalizedServers.length === 0 || !currentUrl) {
     return (
-      <div className="video-container flex items-center justify-center">
-        <div className="text-center text-gray-400">
-          <svg className="w-16 h-16 mx-auto mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div className="video-container flex items-center justify-center bg-black aspect-video rounded-xl overflow-hidden border border-[#222]">
+        <div className="text-center text-gray-400 p-6">
+          <svg className="w-16 h-16 mx-auto mb-3 opacity-30 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <p>Tidak ada sumber video tersedia</p>
+          <p className="font-semibold text-white mb-1">Sumber Video Sedang Diproses</p>
+          <p className="text-xs text-gray-500">Pilih episode lain atau coba beberapa saat lagi.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full bg-black">
-      {/* Video */}
-      <div className="video-container">
+    <div className="w-full bg-black rounded-xl overflow-hidden border border-[#222]">
+      {/* Video / Embed */}
+      <div className="video-container relative aspect-video bg-black">
         {isEmbed ? (
           <iframe
             src={currentUrl}
             title={title}
             allowFullScreen
-            allow="autoplay; fullscreen; picture-in-picture"
-            className="w-full h-full border-0"
+            allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+            className="w-full h-full border-0 absolute inset-0"
           />
         ) : (
           <video
@@ -144,7 +174,7 @@ export default function VideoPlayer({ servers, title, onProgress }: VideoPlayerP
             key={currentUrl}
             src={currentUrl}
             controls
-            className="w-full h-full"
+            className="w-full h-full absolute inset-0"
             title={title}
           >
             Browser Anda tidak mendukung pemutar video.
@@ -155,17 +185,17 @@ export default function VideoPlayer({ servers, title, onProgress }: VideoPlayerP
       {/* Controls bar */}
       <div className="bg-[#0d0d0d] border-t border-[#1a1a1a] p-3 space-y-3">
         {/* Server tabs */}
-        {servers.length > 1 && (
+        {normalizedServers.length > 1 && (
           <div>
-            <p className="text-gray-500 text-xs mb-2 uppercase tracking-wider">Server</p>
+            <p className="text-gray-500 text-xs mb-2 uppercase tracking-wider font-semibold">Pilih Server</p>
             <div className="flex flex-wrap gap-2">
-              {servers.map((s, i) => (
+              {normalizedServers.map((s, i) => (
                 <button
                   key={i}
                   onClick={() => setSelectedServer(i)}
-                  className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                     selectedServer === i
-                      ? 'bg-primary text-white'
+                      ? 'bg-primary text-white shadow-lg shadow-primary/30'
                       : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#222] hover:text-white border border-[#333]'
                   }`}
                 >
@@ -179,15 +209,15 @@ export default function VideoPlayer({ servers, title, onProgress }: VideoPlayerP
         {/* Quality selector */}
         {currentStreams.length > 1 && (
           <div>
-            <p className="text-gray-500 text-xs mb-2 uppercase tracking-wider">Kualitas</p>
+            <p className="text-gray-500 text-xs mb-2 uppercase tracking-wider font-semibold">Kualitas Video</p>
             <div className="flex flex-wrap gap-2">
               {currentStreams.map((stream) => (
                 <button
                   key={stream.quality}
                   onClick={() => setSelectedQuality(stream.quality)}
-                  className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                     selectedQuality === stream.quality
-                      ? 'bg-primary text-white'
+                      ? 'bg-primary text-white shadow-lg shadow-primary/30'
                       : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#222] hover:text-white border border-[#333]'
                   }`}
                 >
@@ -200,7 +230,7 @@ export default function VideoPlayer({ servers, title, onProgress }: VideoPlayerP
 
         {/* Keyboard shortcuts hint */}
         {!isEmbed && (
-          <p className="text-gray-700 text-[10px]">
+          <p className="text-gray-600 text-[10px]">
             Pintasan: Spasi=Play/Pause · F=Fullscreen · M=Mute · ←/→=±10 detik
           </p>
         )}

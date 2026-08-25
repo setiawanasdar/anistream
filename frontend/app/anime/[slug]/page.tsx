@@ -93,8 +93,21 @@ export default function AnimeDetailPage() {
     ? synopsis.slice(0, 200) + '...'
     : synopsis;
 
-  const episodes: Episode[] = anime.episodes_list ?? [];
-  const firstEpisode = episodes[episodes.length - 1]; // usually oldest
+  // Support all casing / naming conventions for episode list
+  const rawEpisodes: any[] = (anime as any).episodes_list || (anime as any).episodeList || (anime as any).episodes || [];
+  const episodes: Episode[] = Array.isArray(rawEpisodes) ? rawEpisodes.map((ep, idx) => {
+    if (typeof ep === 'string') {
+      return { slug: ep, title: `Episode ${idx + 1}`, episode_number: `${idx + 1}` };
+    }
+    return {
+      slug: ep.slug || String(ep.id || idx + 1),
+      title: ep.title || `Episode ${ep.episode_number || idx + 1}`,
+      episode_number: String(ep.episode_number || idx + 1),
+    };
+  }) : [];
+
+  // Oldest / Episode 1 is typically at the end or beginning depending on order
+  const firstEpisode = episodes[episodes.length - 1] || episodes[0];
 
   return (
     <div>
@@ -225,9 +238,13 @@ export default function AnimeDetailPage() {
         </div>
 
         {/* Episode list */}
-        {episodes.length > 0 && (
+        {episodes.length > 0 ? (
           <div className="mt-8">
             <EpisodeList episodes={episodes} animeSlug={slug} />
+          </div>
+        ) : (
+          <div className="mt-8 bg-card border border-[#222] rounded-xl p-6 text-center text-gray-400">
+            Belum ada episode yang tersedia untuk anime ini.
           </div>
         )}
       </div>

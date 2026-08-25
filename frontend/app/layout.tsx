@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import Navbar from '@/components/Navbar';
@@ -7,6 +7,10 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 
 const inter = Inter({ subsets: ['latin'] });
 
+export const viewport: Viewport = {
+  themeColor: '#0a0a0a',
+};
+
 export const metadata: Metadata = {
   title: {
     default: 'AniStream - Nonton Anime Sub Indo',
@@ -14,7 +18,6 @@ export const metadata: Metadata = {
   },
   description: 'Nonton anime subtitle Indonesia terlengkap dan terbaru secara gratis.',
   manifest: '/manifest.json',
-  themeColor: '#0a0a0a',
   appleWebApp: {
     capable: true,
     title: 'AniStream',

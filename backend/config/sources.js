@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 require('dotenv').config();
 
 /**
@@ -16,16 +16,16 @@ module.exports = {
     samehadaku: {
       name: 'Samehadaku',
       baseUrl: process.env.SAMEHADAKU_URL || 'https://samehadaku.email',
-      enabled: process.env.SAMEHADAKU_ENABLED !== 'false',
+      enabled: false, // DISABLED: domain hijacked by gambling site (EDATOTO)
       priority: 2,
     },
     neonime: {
       name: 'Neonime',
       baseUrl: process.env.NEONIME_URL || 'https://neonime.fun',
-      enabled: process.env.NEONIME_ENABLED !== 'false',
+      enabled: false, // DISABLED: DNS not found (domain expired)
       priority: 3,
     },
   },
   /** Ordered list of sources to try when calling withFallback() */
-  fallbackOrder: ['otakudesu', 'samehadaku', 'neonime'],
+  fallbackOrder: ['otakudesu'],
 };

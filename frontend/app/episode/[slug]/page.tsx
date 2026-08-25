@@ -33,11 +33,11 @@ function EpisodeSkeleton() {
 export default function EpisodePage() {
   const params = useParams();
   const slug = params?.slug as string;
-  const [episode, setEpisode] = useState<EpisodeDetail | null>(null);
+  const [episode, setEpisode] = useState<any | null>(null);
   const [allEpisodes, setAllEpisodes] = useState<{ slug: string; title: string; episode_number: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [episodeListOpen, setEpisodeListOpen] = useState(false);
+  const [episodeListOpen, setEpisodeListOpen] = useState(true);
   const { updateProgress } = useContinueWatching();
 
   const fetchEpisode = async () => {
@@ -52,8 +52,13 @@ export default function EpisodePage() {
       if (res.data.animeSlug) {
         try {
           const animeRes = await api.getAnimeDetail(res.data.animeSlug);
-          if (animeRes.data.episodes_list) {
-            setAllEpisodes(animeRes.data.episodes_list);
+          const rawEps: any[] = animeRes.data?.episodes_list || animeRes.data?.episodeList || animeRes.data?.episodes || [];
+          if (Array.isArray(rawEps)) {
+            setAllEpisodes(rawEps.map((ep, idx) => ({
+              slug: ep.slug || String(ep.id || idx + 1),
+              title: ep.title || `Episode ${ep.episode_number || idx + 1}`,
+              episode_number: String(ep.episode_number || idx + 1),
+            })));
           }
         } catch {
           // Ignore, episode list is optional
@@ -75,10 +80,10 @@ export default function EpisodePage() {
       if (!episode) return;
       updateProgress({
         episodeSlug: slug,
-        animeSlug: episode.animeSlug,
-        animeTitle: episode.anime,
-        episodeTitle: episode.title,
-        poster: '', // poster not available at episode level
+        animeSlug: episode.animeSlug || '',
+        animeTitle: episode.anime || episode.title || '',
+        episodeTitle: episode.title || '',
+        poster: '',
         progress: percent,
       });
     },
@@ -105,14 +110,17 @@ export default function EpisodePage() {
     );
   }
 
+  const prevEp = episode.prev_episode || episode.prevEpisode;
+  const nextEp = episode.next_episode || episode.nextEpisode;
+
   return (
     <div>
       {/* Video player - full width, black bg */}
       <div className="bg-black w-full">
-        <div className="max-w-screen-2xl mx-auto">
+        <div className="max-w-screen-2xl mx-auto px-2 sm:px-4 py-3">
           <VideoPlayer
-            servers={episode.servers}
-            title={episode.title}
+            servers={episode.servers || []}
+            title={episode.title || ''}
             onProgress={handleProgress}
           />
         </div>
@@ -123,10 +131,10 @@ export default function EpisodePage() {
         {/* Title & Anime */}
         <div className="space-y-1 mb-4">
           <h1 className="text-white text-xl sm:text-2xl font-bold leading-tight">{episode.title}</h1>
-          {episode.anime && (
+          {episode.anime && episode.animeSlug && (
             <Link
               href={`/anime/${episode.animeSlug}`}
-              className="text-primary-light hover:text-primary transition-colors text-sm font-medium"
+              className="text-primary-light hover:text-primary transition-colors text-sm font-medium inline-block mt-1"
             >
               ← {episode.anime}
             </Link>
@@ -140,9 +148,9 @@ export default function EpisodePage() {
 
         {/* Prev / Next navigation */}
         <div className="flex items-center gap-3 flex-wrap">
-          {episode.prev_episode && (
+          {prevEp && (
             <Link
-              href={`/episode/${episode.prev_episode}`}
+              href={`/episode/${prevEp}`}
               className="flex items-center gap-2 bg-[#1a1a1a] hover:bg-[#222] text-white text-sm font-medium px-4 py-2.5 rounded-lg border border-[#333] transition-colors"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -151,9 +159,9 @@ export default function EpisodePage() {
               Episode Sebelumnya
             </Link>
           )}
-          {episode.next_episode && (
+          {nextEp && (
             <Link
-              href={`/episode/${episode.next_episode}`}
+              href={`/episode/${nextEp}`}
               className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
             >
               Episode Selanjutnya
@@ -166,26 +174,21 @@ export default function EpisodePage() {
 
         {/* Episode list toggle */}
         {allEpisodes.length > 0 && (
-          <div className="mt-6">
-            <button
-              onClick={() => setEpisodeListOpen(!episodeListOpen)}
-              className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors mb-3"
-            >
-              <svg
-                className={`w-4 h-4 transition-transform ${episodeListOpen ? 'rotate-180' : ''}`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+          <div className="mt-8">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-white font-semibold text-base">Pilih Episode</h3>
+              <button
+                onClick={() => setEpisodeListOpen(!episodeListOpen)}
+                className="text-xs text-gray-400 hover:text-white transition-colors"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-              {episodeListOpen ? 'Sembunyikan' : 'Tampilkan'} Daftar Episode
-            </button>
+                {episodeListOpen ? 'Sembunyikan' : 'Tampilkan'}
+              </button>
+            </div>
             {episodeListOpen && (
               <EpisodeList
                 episodes={allEpisodes}
                 currentSlug={slug}
-                animeSlug={episode.animeSlug}
+                animeSlug={episode.animeSlug || ''}
               />
             )}
           </div>
