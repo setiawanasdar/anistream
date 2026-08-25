@@ -1,0 +1,24 @@
+﻿services:
+  - type: web
+    name: anime-stream-api
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: NODE_ENV
+        value: production
+      - key: OTAKUDESU_URL
+        value: https://otakudesu.cloud
+      - key: SAMEHADAKU_URL
+        value: https://samehadaku.email
+      - key: NEONIME_URL
+        value: https://neonime.fun
+      - key: OTAKUDESU_ENABLED
+        value: true
+      - key: SAMEHADAKU_ENABLED
+        value: true
+      - key: NEONIME_ENABLED
+        value: true
