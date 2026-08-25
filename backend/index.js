@@ -98,6 +98,36 @@ app.get('/health', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Debug endpoint – test scraper connectivity (only available in production for admin use)
+// ---------------------------------------------------------------------------
+app.get('/api/debug/sources', async (req, res) => {
+  const { fetchHtml } = require('./utils/fetcher');
+  const results = {};
+
+  const testUrls = {
+    otakudesu: (process.env.OTAKUDESU_URL || 'https://otakudesu.cloud') + '/',
+    samehadaku: (process.env.SAMEHADAKU_URL || 'https://samehadaku.email') + '/',
+    neonime: (process.env.NEONIME_URL || 'https://neonime.fun') + '/',
+  };
+
+  for (const [name, url] of Object.entries(testUrls)) {
+    try {
+      const html = await fetchHtml(url);
+      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+      results[name] = {
+        ok: true,
+        title: titleMatch ? titleMatch[1].trim() : 'unknown',
+        length: html.length,
+      };
+    } catch (err) {
+      results[name] = { ok: false, error: err.message };
+    }
+  }
+
+  res.json({ success: true, results });
+});
+
+// ---------------------------------------------------------------------------
 // Root info endpoint
 // ---------------------------------------------------------------------------
 app.get('/', (req, res) => {
