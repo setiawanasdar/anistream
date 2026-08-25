@@ -73,7 +73,7 @@ export interface ApiResponse<T> {
 
 async function fetchApi<T>(url: string, options?: RequestInit): Promise<ApiResponse<T>> {
   const res = await fetch(url, {
-    next: { revalidate: 60 },
+    cache: 'no-store',
     ...options,
   });
   if (!res.ok) throw new Error(`API error: ${res.status} - ${url}`);

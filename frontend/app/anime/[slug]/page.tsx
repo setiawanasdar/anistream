@@ -11,7 +11,6 @@ import EpisodeList from '@/components/EpisodeList';
 import WatchlistButton from '@/components/WatchlistButton';
 import SourceBadge from '@/components/SourceBadge';
 import { formatRating, normalizeStatus, getStatusColor } from '@/lib/utils';
-import type { Metadata } from 'next';
 
 // ─── Skeleton ──────────────────────────────────────────────────────────────────
 
@@ -111,7 +110,7 @@ export default function AnimeDetailPage() {
           unoptimized
         />
         <div className="absolute inset-0 bg-black/70" />
-        <div className="absolute inset-0 gradient-bottom" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] to-transparent" />
       </div>
 
       {/* Main content */}

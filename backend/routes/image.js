@@ -40,10 +40,13 @@ router.get('/', async (req, res) => {
   }
 
   try {
+    // responseType: 'arraybuffer' is required so axios returns raw binary (Buffer)
+    // instead of a garbled string for image content
     const response = await fetchUrl(targetUrl, {
       timeout: 15000,
       retries: 2,
       referer: new URL(targetUrl).origin,
+      responseType: 'arraybuffer',
     });
 
     const contentType = response.headers['content-type'] || 'image/jpeg';
@@ -60,13 +63,7 @@ router.get('/', async (req, res) => {
       'X-Proxied-From': new URL(targetUrl).hostname,
     });
 
-    // Stream binary data
-    if (Buffer.isBuffer(response.data)) {
-      return res.send(response.data);
-    }
-
-    // For axios arraybuffer responses
-    return res.send(response.data);
+    return res.send(Buffer.from(response.data));
   } catch (err) {
     console.warn(`[image-proxy] Failed to fetch ${targetUrl}: ${err.message}`);
     // Return a 1x1 transparent PNG as fallback instead of an error

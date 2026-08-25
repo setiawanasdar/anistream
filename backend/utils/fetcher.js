@@ -85,6 +85,7 @@ async function fetchUrl(url, options = {}) {
     retries = 3,
     method = 'get',
     data = null,
+    responseType = 'text', // 'text' | 'arraybuffer' | 'json'
   } = options;
 
   let lastError;
@@ -96,10 +97,10 @@ async function fetchUrl(url, options = {}) {
         url,
         data,
         timeout,
+        responseType,
         headers: buildHeaders(referer),
-        // Follow redirects (default axios behaviour)
         maxRedirects: 5,
-        validateStatus: (status) => status < 500, // don't throw on 4xx
+        validateStatus: (status) => status < 500,
       });
 
       if (response.status === 200) {

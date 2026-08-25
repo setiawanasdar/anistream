@@ -14,6 +14,7 @@ const config: Config = {
           DEFAULT: '#7c3aed',
           light: '#8b5cf6',
           dark: '#6d28d9',
+          'primary-dark': '#6d28d9', // alias for hover:bg-primary-dark
         },
         card: '#111111',
         border: '#222222',

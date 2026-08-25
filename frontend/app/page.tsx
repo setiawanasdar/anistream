@@ -26,8 +26,8 @@ function HeroBanner({ anime }: { anime: Anime }) {
         />
         {/* Overlays */}
         <div className="absolute inset-0 bg-black/60" />
-        <div className="absolute inset-0 gradient-bottom" />
-        <div className="absolute inset-0 gradient-left" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/40 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0a]/80 to-transparent" />
       </div>
 
       {/* Content */}

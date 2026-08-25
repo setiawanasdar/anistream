@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, isSupabaseEnabled } from '../supabase';
 import { useAuth } from './useAuth';
 
@@ -30,9 +30,8 @@ export interface ContinueWatchingItem {
 export function useContinueWatching() {
   const [list, setList] = useState<ContinueWatchingItem[]>([]);
   const { user } = useAuth();
-
-  // Throttle map: episodeSlug → last sync timestamp
-  const lastSyncRef = { current: new Map<string, number>() };
+  // Throttle ref: tracks last Supabase sync time per episode slug
+  const lastSyncRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     try {
