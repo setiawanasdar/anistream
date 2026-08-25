@@ -2,7 +2,6 @@
 
 import { useState, useCallback } from 'react';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { isSupabaseEnabled } from '@/lib/supabase';
 
 /**
  * AuthButton component
@@ -11,7 +10,7 @@ import { isSupabaseEnabled } from '@/lib/supabase';
  * - Hidden if Supabase is not configured
  */
 export default function AuthButton() {
-  const { user, loading, signIn, signOut } = useAuth();
+  const { user, loading, signIn, signOut, isSupabaseEnabled } = useAuth();
   const [showModal, setShowModal] = useState(false);
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);

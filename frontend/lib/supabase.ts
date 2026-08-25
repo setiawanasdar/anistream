@@ -1,12 +1,27 @@
-import { createClient } from '@supabase/supabase-js';
+/**
+ * lib/supabase.ts
+ * Safe Supabase client initialization.
+ * Returns null if env vars are missing OR if the package fails to load.
+ * This ensures the app works 100% without Supabase configured.
+ */
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://nurlohsdvtghsujizsud.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_zw2Yz1rU_5huDlP9LEen-Q_90y8swhD';
+let supabaseClient: any = null;
+let enabled = false;
 
-// Supabase client – returns null if env vars are not set (offline/localStorage mode)
-export const supabase =
-  supabaseUrl && supabaseAnonKey
-    ? createClient(supabaseUrl, supabaseAnonKey)
-    : null;
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-export const isSupabaseEnabled = Boolean(supabaseUrl && supabaseAnonKey);
+if (url && key && url.startsWith('https://') && key.length > 20) {
+  try {
+    // Dynamic require so a missing package won't crash the entire app
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { createClient } = require('@supabase/supabase-js');
+    supabaseClient = createClient(url, key);
+    enabled = true;
+  } catch {
+    console.warn('[supabase] Package not available – running in localStorage-only mode');
+  }
+}
+
+export const supabase = supabaseClient;
+export const isSupabaseEnabled = enabled;

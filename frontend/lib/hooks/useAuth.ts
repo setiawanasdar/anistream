@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase, isSupabaseEnabled } from '../supabase';
 
 export interface AuthUser {
   id: string;
@@ -9,36 +8,39 @@ export interface AuthUser {
 }
 
 /**
- * useAuth hook
- * - Handles login / logout via Supabase magic link (email OTP)
- * - If Supabase is not configured, auth is disabled and user is always null
- * - Persists session via Supabase's built-in session storage
+ * useAuth – safe hook, returns null user if Supabase is not configured.
+ * Uses lazy dynamic import so missing @supabase/supabase-js won't crash the app.
  */
 export function useAuth() {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
-    if (!isSupabaseEnabled || !supabase) {
-      setLoading(false);
-      return;
-    }
+    (async () => {
+      try {
+        const { supabase, isSupabaseEnabled } = await import('../supabase');
+        if (!isSupabaseEnabled || !supabase) {
+          setLoading(false);
+          return;
+        }
+        setEnabled(true);
+        const { data: { session } } = await supabase.auth.getSession();
+        setUser(session?.user ? { id: session.user.id, email: session.user.email! } : null);
+        setLoading(false);
 
-    // Get current session on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ? { id: session.user.id, email: session.user.email! } : null);
-      setLoading(false);
-    });
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ? { id: session.user.id, email: session.user.email! } : null);
-    });
-
-    return () => subscription.unsubscribe();
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
+          setUser(session?.user ? { id: session.user.id, email: session.user.email! } : null);
+        });
+        return () => subscription?.unsubscribe();
+      } catch {
+        setLoading(false);
+      }
+    })();
   }, []);
 
   const signIn = useCallback(async (email: string) => {
+    const { supabase } = await import('../supabase');
     if (!supabase) throw new Error('Supabase tidak dikonfigurasi');
     const { error } = await supabase.auth.signInWithOtp({
       email,
@@ -48,10 +50,12 @@ export function useAuth() {
   }, []);
 
   const signOut = useCallback(async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
+    try {
+      const { supabase } = await import('../supabase');
+      if (supabase) await supabase.auth.signOut();
+    } catch { /* ok */ }
     setUser(null);
   }, []);
 
-  return { user, loading, signIn, signOut, isSupabaseEnabled };
+  return { user, loading, signIn, signOut, isSupabaseEnabled: enabled };
 }
