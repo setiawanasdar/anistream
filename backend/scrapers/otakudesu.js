@@ -570,9 +570,7 @@ async function getAnimeDetail(slug) {
       episodeList,
       episodes_list: episodeList,
       batchLinks,
-    };
   } catch (err) {
-    console.error('[otakudesu] getAnimeDetail error:', err.message);
     return null;
   }
 }

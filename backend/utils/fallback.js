@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const { sources } = require('../config/sources');
 
@@ -40,11 +40,9 @@ async function withFallback(sourceOrder, methodName, ...args) {
       if (hasContent) {
         return { data: result, source: sourceName };
       }
-
-      console.warn(`[fallback] Source "${sourceName}" returned empty result for "${methodName}" – trying next`);
+      // Silently move to next provider if empty
     } catch (err) {
       const msg = `Source "${sourceName}" failed for "${methodName}": ${err.message}`;
-      console.warn(`[fallback] ${msg}`);
       errors.push(msg);
     }
   }
