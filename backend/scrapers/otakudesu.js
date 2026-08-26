@@ -647,10 +647,6 @@ async function getEpisode(slug) {
         const href = $(a).attr('href') || '';
         if (href && host) {
           links.push({ host, url: href });
-
-          if (isStreamPlayerHost(host) || isStreamPlayerHost(href)) {
-            addStream(host, qualityText, href);
-          }
         }
       });
 
