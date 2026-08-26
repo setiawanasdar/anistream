@@ -6,11 +6,100 @@
  */
 
 const cheerio = require('cheerio');
+const axios = require('axios');
 const { fetchHtml } = require('../utils/fetcher');
 const { sources } = require('../config/sources');
 
 function getBaseUrl() {
   return sources?.otakudesu?.baseUrl || 'https://otakudesu.blog';
+}
+
+async function decodeAjaxMirrors($, rawHtml, epUrl, addStream) {
+  try {
+    const actions = [...new Set([...rawHtml.matchAll(/action:"([^"]+)"/g)].map((m) => m[1]))];
+    if (actions.length < 2) return;
+
+    const nonceRes = await axios.post(
+      `${getBaseUrl()}/wp-admin/admin-ajax.php`,
+      new URLSearchParams({ action: actions[1] }).toString(),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-Requested-With': 'XMLHttpRequest',
+          'Referer': epUrl,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+        timeout: 4000,
+      }
+    );
+
+    const nonce = nonceRes.data?.data;
+    if (!nonce) return;
+
+    const mirrorTasks = [];
+
+    $('.mirrorstream ul').each((_, ul) => {
+      const $ul = $(ul);
+      const ulClass = $ul.attr('class') || '';
+      const qMatch = ulClass.match(/m(\d+p?)/i);
+      const quality = qMatch ? (qMatch[1].endsWith('p') ? qMatch[1] : `${qMatch[1]}p`) : 'HD';
+
+      $ul.find('li a[data-content]').each((__, a) => {
+        const serverName = $(a).text().trim() || 'Mirror';
+        const rawContent = $(a).attr('data-content');
+        if (rawContent) {
+          mirrorTasks.push(
+            (async () => {
+              try {
+                const decoded = JSON.parse(Buffer.from(rawContent, 'base64').toString());
+                const serverPayload = {
+                  ...decoded,
+                  nonce,
+                  action: actions[0],
+                };
+
+                const sRes = await axios.post(
+                  `${getBaseUrl()}/wp-admin/admin-ajax.php`,
+                  new URLSearchParams(serverPayload).toString(),
+                  {
+                    headers: {
+                      'Content-Type': 'application/x-www-form-urlencoded',
+                      'X-Requested-With': 'XMLHttpRequest',
+                      'Referer': epUrl,
+                      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    },
+                    timeout: 4000,
+                  }
+                );
+
+                if (sRes.data?.data) {
+                  const html = Buffer.from(sRes.data.data, 'base64').toString();
+                  const srcMatch = html.match(/src="([^"]+)"/i);
+                  if (srcMatch && srcMatch[1]) {
+                    const streamUrl = srcMatch[1];
+                    if (
+                      !streamUrl.includes('desustream') &&
+                      !streamUrl.includes('desudrive') &&
+                      !streamUrl.includes('desu60')
+                    ) {
+                      const cleanServerName = serverName.charAt(0).toUpperCase() + serverName.slice(1).toLowerCase();
+                      addStream(`Sub Indo - ${cleanServerName}`, quality, streamUrl);
+                    }
+                  }
+                }
+              } catch {
+                // ignore
+              }
+            })()
+          );
+        }
+      });
+    });
+
+    await Promise.allSettled(mirrorTasks);
+  } catch (err) {
+    console.warn('[otakudesu] decodeAjaxMirrors failed:', err.message);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -615,23 +704,8 @@ async function getEpisode(slug) {
       }
     });
 
-    // B. Mirrorstream by Quality (.m360p, .m480p, .m720p, .m1080p)
-    $('.mirrorstream ul').each((_, ul) => {
-      const $ul = $(ul);
-      const ulClass = $ul.attr('class') || '';
-      let qualityMatch = ulClass.match(/m(\d+p?)/i);
-      let quality = qualityMatch ? qualityMatch[1] : 'HD';
-
-      $ul.find('li').each((_, li) => {
-        const $li = $(li);
-        const serverName = $li.find('a, span, button').first().text().trim() || 'Mirror';
-        const raw = $li.find('a, span, button').first().attr('data-content') || '';
-        const streamUrl = decodeStreamPayload(raw);
-        if (streamUrl) {
-          addStream(serverName, quality, streamUrl);
-        }
-      });
-    });
+    // B. Decode real mirror streams via Otakudesu admin-ajax (Filedon, Vidhide, Mega, StreamWish, etc.)
+    await decodeAjaxMirrors($, html, `${getBaseUrl()}/episode/${cleanSlug}/`, addStream);
 
     // ---------------------------------------------------------------------------
     // 2. Download Section (.download ul li, .listdownload ul li)

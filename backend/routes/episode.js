@@ -57,10 +57,10 @@ router.get('/:slug', async (req, res, next) => {
     const epNum = extractEpisodeNumber(cleanSlug);
     const animeName = extractAnimeName(cleanSlug);
 
-    // Run scraper with 4s timeout and AniList resolution concurrently
+    // Run scraper with 8s timeout and AniList resolution concurrently
     const scraperPromise = Promise.race([
       withFallback(fallbackOrder, 'getEpisode', slug),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Scraper timeout')), 4000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Scraper timeout')), 8000)),
     ]).catch(() => null);
 
     const [scraperResult, anilistResult] = await Promise.allSettled([
@@ -77,12 +77,48 @@ router.get('/:slug', async (req, res, next) => {
     }
 
     // --- Step 2: Build servers list ---
+    // --- Step 2: Build servers list ---
     const servers = [];
 
-    // Universal HD players — always add if we have an AniList ID
+    const BLOCKED_STREAM_DOMAINS = [
+      'mediafire', 'acefile', 'gdrive', 'drive.google',
+      'zippyshare', 'kumpulbagi', 'otakufiles', 'racaty', 'letsupload',
+      'hxfile', 'hexupload', 'fembed', 'uplod', 'moevideo', 'upfile',
+      'gofile.io', 'uploadgram', 'clicknupload', 'mirrorace',
+      'desustream', 'desudrive', 'desu60', 'desufast', 'desuarchive',
+      'okstream', 'okestream', 'shinobicdn', 'streamsss',
+      'streamcrypt', 'streamlare', 'streamgg', 'streamta',
+      'yourupload', 'mixdrop', 'vidoza', 'upstream', 'vudeo',
+    ];
+
+    // A. Add valid Sub Indo streams from scraper (Filedon, Vidhide, Mega Embed, etc.)
+    if (scraperData && Array.isArray(scraperData.servers)) {
+      for (const s of scraperData.servers) {
+        if (s && Array.isArray(s.streams) && s.streams.length > 0) {
+          const validStreams = s.streams.filter((st) => {
+            const url = (st.url || '').toLowerCase();
+            if (!url.startsWith('http')) return false;
+            // Allow mega embed player, block download files
+            if (url.includes('mega.nz/file') || url.includes('mega.nz/#!')) return false;
+            return !BLOCKED_STREAM_DOMAINS.some((domain) => url.includes(domain));
+          });
+          if (validStreams.length > 0) {
+            const serverName = s.server.startsWith('Sub Indo')
+              ? s.server
+              : `Sub Indo - ${s.server}`;
+            servers.push({
+              server: serverName,
+              streams: validStreams,
+            });
+          }
+        }
+      }
+    }
+
+    // B. Add Universal HD players (always available via AniList ID)
     if (aniId) {
       servers.push({
-        server: '▶ Server HD 1',
+        server: '▶ Server HD 1 (Multi-Quality)',
         streams: [
           { quality: '1080p', url: `https://vidsrc.me/embed/anime?anilist=${aniId}&episode=${epNum}` },
           { quality: '720p', url: `https://vidsrc.me/embed/anime?anilist=${aniId}&episode=${epNum}` },
@@ -100,39 +136,8 @@ router.get('/:slug', async (req, res, next) => {
       });
     }
 
-    // Otakudesu scraper streams (if any valid iframes exist)
-    const BLOCKED_STREAM_DOMAINS = [
-      'mega.nz', 'mediafire', 'acefile', 'gdrive', 'drive.google',
-      'zippyshare', 'kumpulbagi', 'otakufiles', 'racaty', 'letsupload',
-      'hxfile', 'hexupload', 'fembed', 'uplod', 'moevideo', 'upfile',
-      'gofile.io', 'uploadgram', 'clicknupload', 'mirrorace',
-      'desustream', 'desudrive', 'desu60', 'desufast', 'desuarchive',
-      'okstream', 'okestream', 'shinobicdn', 'streamsss',
-      'streamcrypt', 'streamlare', 'streamgg', 'streamta',
-      'yourupload', 'mixdrop', 'vidoza', 'upstream', 'vudeo',
-    ];
-
-    if (scraperData && Array.isArray(scraperData.servers)) {
-      for (const s of scraperData.servers) {
-        if (s && Array.isArray(s.streams) && s.streams.length > 0) {
-          const validStreams = s.streams.filter((st) => {
-            const url = (st.url || '').toLowerCase();
-            if (!url.startsWith('http')) return false;
-            return !BLOCKED_STREAM_DOMAINS.some((domain) => url.includes(domain));
-          });
-          if (validStreams.length > 0) {
-            servers.push({
-              server: `Sub Indo - ${s.server}`,
-              streams: validStreams,
-            });
-          }
-        }
-      }
-    }
-
-    // Fallback: If still 0 servers and no aniId, provide a generic search embed
+    // Fallback: If still 0 servers and no aniId, try alt resolution
     if (servers.length === 0) {
-      // Try one more search query on AniList
       const altId = await resolveAnilistId(cleanSlug.replace(/-/g, ' ')).catch(() => null);
       if (altId) {
         servers.push({

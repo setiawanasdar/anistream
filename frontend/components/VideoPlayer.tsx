@@ -14,6 +14,8 @@ const EMBED_DOMAINS = [
   'filemoon', 'vidplay', 'vidstream', 'mp4upload', 'streamtape',
   'doodstream', 'dood', 'streamsb', 'sbplay',
   'sendvid', 'streamwish', 'blogger.com',
+  // Sub Indo mirror embed hosts
+  'filedon', 'vidhide', 'odvidhide', 'mega.nz/embed', 'mega.nz',
   // Universal HD players
   'vidsrc.me', 'vidsrc.pm', 'vidsrc.in', 'vidsrc.net',
 ];
@@ -24,7 +26,7 @@ const BLOCKED_EMBED_DOMAINS = [
   'desustream', 'desudrive', 'desu60', 'desufast',
   'okstream', 'okestream', 'shinobicdn',
   'yourupload', 'mixdrop', 'vidoza', 'upstream',
-  'mega.nz', 'mediafire', 'gdrive', 'drive.google',
+  'mediafire', 'gdrive', 'drive.google',
   'zippyshare', 'kumpulbagi', 'racaty', 'hxfile',
 ];
 
@@ -34,8 +36,9 @@ function isEmbedUrl(url: string): boolean {
     const u = new URL(url);
     const host = u.hostname.toLowerCase();
     // Never embed blocked domains
-    if (BLOCKED_EMBED_DOMAINS.some(d => host.includes(d))) return false;
-    return EMBED_DOMAINS.some((d) => host.includes(d) || u.pathname.includes(d));
+    if (BLOCKED_EMBED_DOMAINS.some((d) => host.includes(d))) return false;
+    if (url.includes('mega.nz/file') || url.includes('mega.nz/#!')) return false;
+    return EMBED_DOMAINS.some((d) => host.includes(d) || u.pathname.includes(d) || url.includes(d));
   } catch {
     return url.includes('embed') || url.includes('player') || url.startsWith('http');
   }
@@ -46,7 +49,8 @@ function isPlayableUrl(url: string): boolean {
   if (!url) return false;
   try {
     const host = new URL(url).hostname.toLowerCase();
-    return !BLOCKED_EMBED_DOMAINS.some(d => host.includes(d));
+    if (url.includes('mega.nz/file') || url.includes('mega.nz/#!')) return false;
+    return !BLOCKED_EMBED_DOMAINS.some((d) => host.includes(d));
   } catch {
     return true;
   }

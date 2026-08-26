@@ -191,6 +191,8 @@ async function resolveAnilistId(titleQuery) {
 
   // Expand common short codes and abbreviations
   const expansions = [
+    { regex: /\brezr\b/gi, rep: 'rezero' },
+    { regex: /\bisktsu\b/gi, rep: 'isekai seikatsu' },
     { regex: /\bkmtu\b/gi, rep: 'kimetsu' },
     { regex: /\bsnk\b/gi, rep: 'shingeki no kyojin' },
     { regex: /\bmha\b/gi, rep: 'my hero academia' },
