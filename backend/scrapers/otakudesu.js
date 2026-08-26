@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Otakudesu Scraper (with Multi-Language Search & Smart Fallbacks)
+ * Otakudesu Scraper (Enhanced with Full Completed/Batch & Multi-Language Support)
  * Base domain: https://otakudesu.cloud (configurable via OTAKUDESU_URL env var)
  */
 
@@ -196,9 +196,6 @@ async function getPopular() {
   }
 }
 
-/**
- * Single raw search query to Otakudesu.
- */
 async function searchSingle(q) {
   try {
     const url = `${getBaseUrl()}/?s=${encodeURIComponent(q)}&post_type=anime`;
@@ -246,16 +243,11 @@ async function searchSingle(q) {
   }
 }
 
-/**
- * Search anime with Multi-Language / Synonym bridging.
- * (e.g. typing "Demon Slayer" automatically searches "Kimetsu no Yaiba").
- */
 async function searchAnime(query) {
   try {
     let results = await searchSingle(query);
 
-    // If query returned few results or might be an English title,
-    // look up alternate / Romaji titles from AniList
+    // If query returned few results, look up alternate / Romaji titles from AniList
     try {
       const anilist = require('./anilist');
       const altTitles = await anilist.getAlternateTitles(query);
@@ -270,10 +262,9 @@ async function searchAnime(query) {
         }
       }
     } catch {
-      // continue with whatever results we have
+      // continue
     }
 
-    // Deduplicate by slug
     const seen = new Set();
     return results.filter((item) => {
       if (seen.has(item.slug)) return false;
@@ -313,7 +304,7 @@ async function getAnimeDetail(slug) {
       }
     }
 
-    // If still empty or no episode info found, do an automatic search with slug keywords
+    // If still empty or no details, search Otakudesu for the slug keywords
     if (!html || (!html.includes('infozin') && !html.includes('episodelist') && !html.includes('monk'))) {
       const searchKeywords = cleanSlug.replace(/-sub-indo$/i, '').replace(/-/g, ' ');
       const searchRes = await searchAnime(searchKeywords);
@@ -330,7 +321,7 @@ async function getAnimeDetail(slug) {
 
     // Parse info block
     const info = {};
-    $('.infozin p, .infoz p, .infozin span').each((_, el) => {
+    $('.infozin p, .infoz p, .infozingle p, .infozin span').each((_, el) => {
       const text = $(el).text();
       const colon = text.indexOf(':');
       if (colon === -1) return;
@@ -382,7 +373,7 @@ async function getAnimeDetail(slug) {
       ? genreRaw.split(',').map((g) => g.trim()).filter(Boolean)
       : [];
 
-    // Episode list: parse from ALL episode wrappers (.episodelist, #_epslist, .monk, .barisul)
+    // Episode list: parse from ALL episode containers
     const episodeList = [];
     const seenEp = new Set();
 
@@ -408,22 +399,50 @@ async function getAnimeDetail(slug) {
       }
     });
 
-    // Fallback: If no individual episodes found, check all links in episode blocks
+    // Check if there is a /lengkap/ or batch link on the page to fetch missing episodes
     if (episodeList.length === 0) {
-      $('.episodelist a, .batchlink a, .monk a').each((idx, a) => {
-        const epTitle = $(a).text().trim();
-        const epHref = $(a).attr('href') || '';
-        const epSlug = extractEpisodeSlug(epHref);
-        if (epTitle && epSlug && !seenEp.has(epSlug)) {
-          seenEp.add(epSlug);
+      const lengkapHref = $('.episodelist a[href*="/lengkap/"], a[href*="/lengkap/"], .batchlink a[href*="/lengkap/"]').first().attr('href');
+      if (lengkapHref) {
+        try {
+          const lengkapHtml = await fetchHtml(lengkapHref, { referer: getBaseUrl() });
+          const $l = cheerio.load(lengkapHtml);
+          $l('.episodelist ul li, #_epslist ul li, .monk ul li, .barisul li, .episodelist li').each((idx, el) => {
+            const a = $l(el).find('a');
+            const epTitle = a.text().trim();
+            const epHref = a.attr('href') || '';
+            const epSlug = extractEpisodeSlug(epHref);
+            if (epTitle && epSlug && !seenEp.has(epSlug)) {
+              seenEp.add(epSlug);
+              const numMatch = epTitle.match(/Episode\s*(\d+(\.\d+)?)/i) || epSlug.match(/episode-(\d+)/i);
+              episodeList.push({
+                title: epTitle,
+                slug: epSlug,
+                episode_number: numMatch ? numMatch[1] : `${idx + 1}`,
+                date: '',
+              });
+            }
+          });
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    // Auto-generate episodes if total episode count is known and list is still empty
+    if (episodeList.length === 0 && episodes) {
+      const countMatch = String(episodes).match(/\d+/);
+      const totalCount = countMatch ? Math.min(parseInt(countMatch[0], 10), 100) : 0;
+      if (totalCount > 0) {
+        for (let i = 1; i <= totalCount; i++) {
+          const baseSlug = cleanSlug.replace(/-sub-indo$/i, '');
           episodeList.push({
-            title: epTitle,
-            slug: epSlug,
-            episode_number: `${idx + 1}`,
+            title: `Episode ${i}`,
+            slug: `${baseSlug}-episode-${i}-sub-indo`,
+            episode_number: `${i}`,
             date: '',
           });
         }
-      });
+      }
     }
 
     // Batch download links
@@ -491,13 +510,15 @@ function decodeStreamPayload(raw) {
 }
 
 /**
- * Get episode streaming data with Multi-Quality support.
+ * Get episode streaming data with Multi-Quality support and fallback URLs.
  */
 async function getEpisode(slug) {
   try {
     const cleanSlug = slug.replace(/^https?:\/\/[^/]+\/(episode|lengkap|batch)\//, '').replace(/\/$/, '');
     const tryUrls = [
       `${getBaseUrl()}/episode/${cleanSlug}/`,
+      `${getBaseUrl()}/episode/${cleanSlug.replace(/-sub-indo$/i, '')}-sub-indo/`,
+      `${getBaseUrl()}/episode/${cleanSlug.replace(/-sub-indo$/i, '')}/`,
       `${getBaseUrl()}/lengkap/${cleanSlug}/`,
       `${getBaseUrl()}/batch/${cleanSlug}/`,
     ];
@@ -506,7 +527,7 @@ async function getEpisode(slug) {
     for (const url of tryUrls) {
       try {
         html = await fetchHtml(url, { referer: getBaseUrl() });
-        if (html && (html.includes('mirrorstream') || html.includes('embed_holder') || html.includes('download'))) {
+        if (html && (html.includes('mirrorstream') || html.includes('embed_holder') || html.includes('download') || html.includes('responsive-embed-stream'))) {
           break;
         }
       } catch {
@@ -607,7 +628,6 @@ async function getEpisode(slug) {
         if (href && host) {
           links.push({ host, url: href });
 
-          // ONLY add to streaming players if it is a genuine video embed provider
           if (isStreamPlayerHost(host) || isStreamPlayerHost(href)) {
             addStream(host, qualityText, href);
           }

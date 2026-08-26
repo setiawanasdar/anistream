@@ -95,19 +95,46 @@ export default function AnimeDetailPage() {
 
   // Support all casing / naming conventions for episode list
   const rawEpisodes: any[] = (anime as any).episodes_list || (anime as any).episodeList || (anime as any).episodes || [];
-  const episodes: Episode[] = Array.isArray(rawEpisodes) ? rawEpisodes.map((ep, idx) => {
-    if (typeof ep === 'string') {
-      return { slug: ep, title: `Episode ${idx + 1}`, episode_number: `${idx + 1}` };
-    }
-    return {
-      slug: ep.slug || String(ep.id || idx + 1),
-      title: ep.title || `Episode ${ep.episode_number || idx + 1}`,
-      episode_number: String(ep.episode_number || idx + 1),
-    };
-  }) : [];
+  let episodes: Episode[] = Array.isArray(rawEpisodes) && rawEpisodes.length > 0
+    ? rawEpisodes.map((ep, idx) => {
+        if (typeof ep === 'string') {
+          return { slug: ep, title: `Episode ${idx + 1}`, episode_number: `${idx + 1}` };
+        }
+        return {
+          slug: ep.slug || String(ep.id || idx + 1),
+          title: ep.title || `Episode ${ep.episode_number || idx + 1}`,
+          episode_number: String(ep.episode_number || idx + 1),
+        };
+      })
+    : [];
 
-  // Oldest / Episode 1 is typically at the end or beginning depending on order
-  const firstEpisode = episodes[episodes.length - 1] || episodes[0];
+  // If episodes array is still empty but total episode count is known (e.g. completed series like Steins;Gate)
+  if (episodes.length === 0 && anime.episodes) {
+    const countMatch = String(anime.episodes).match(/\d+/);
+    const totalCount = countMatch ? Math.min(parseInt(countMatch[0], 10), 100) : 0;
+    if (totalCount > 0) {
+      const baseSlug = slug.replace(/-sub-indo$/i, '');
+      for (let i = 1; i <= totalCount; i++) {
+        episodes.push({
+          slug: `${baseSlug}-episode-${i}-sub-indo`,
+          title: `Episode ${i}`,
+          episode_number: `${i}`,
+        });
+      }
+    }
+  }
+
+  // Fallback: If still 0, provide Episode 1 button at least
+  if (episodes.length === 0) {
+    const baseSlug = slug.replace(/-sub-indo$/i, '');
+    episodes.push({
+      slug: `${baseSlug}-episode-1-sub-indo`,
+      title: `Episode 1`,
+      episode_number: '1',
+    });
+  }
+
+  const firstEpisode = episodes[0] || episodes[episodes.length - 1];
 
   return (
     <div>
@@ -228,7 +255,7 @@ export default function AnimeDetailPage() {
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M8 5v14l11-7z" />
                   </svg>
-                  Mulai Nonton
+                  Mulai Nonton Episode 1
                 </Link>
               )}
               <WatchlistButton anime={anime} />
@@ -238,15 +265,9 @@ export default function AnimeDetailPage() {
         </div>
 
         {/* Episode list */}
-        {episodes.length > 0 ? (
-          <div className="mt-8">
-            <EpisodeList episodes={episodes} animeSlug={slug} />
-          </div>
-        ) : (
-          <div className="mt-8 bg-card border border-[#222] rounded-xl p-6 text-center text-gray-400">
-            Belum ada episode yang tersedia untuk anime ini.
-          </div>
-        )}
+        <div className="mt-8">
+          <EpisodeList episodes={episodes} animeSlug={slug} />
+        </div>
       </div>
     </div>
   );
