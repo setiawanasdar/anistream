@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Otakudesu Scraper (High Quality & Multi-Quality Stream Support)
+ * Otakudesu Scraper (Separated Stream Players & Download Mirrors)
  * Base domain: https://otakudesu.cloud (configurable via OTAKUDESU_URL env var)
  */
 
@@ -232,7 +232,7 @@ async function searchAnime(query) {
 }
 
 /**
- * Get full anime detail page with resilient fallback URLs.
+ * Get full anime detail page.
  */
 async function getAnimeDetail(slug) {
   try {
@@ -374,18 +374,33 @@ async function getAnimeDetail(slug) {
 }
 
 /**
+ * Whitelist of known streaming player hosts.
+ */
+const STREAM_PLAYERS_WHITELIST = [
+  'desustream', 'desudrive', 'otakufiles', 'filemoon', 'vidplay', 'vidstream',
+  'mp4upload', 'streamtape', 'doodstream', 'dood', 'yourupload', 'okru',
+  'streamsb', 'sbplay', 'sendvid', 'streamwish', 'hxfile', 'player', 'embed',
+];
+
+/**
+ * Check if a host/URL is a valid embeddable streaming player.
+ */
+function isStreamPlayerHost(hostOrUrl = '') {
+  const lower = hostOrUrl.toLowerCase();
+  return STREAM_PLAYERS_WHITELIST.some((provider) => lower.includes(provider));
+}
+
+/**
  * Helper to decode mirror data-content payload or extract stream URL.
  */
 function decodeStreamPayload(raw) {
   if (!raw) return '';
   try {
     const decoded = Buffer.from(raw, 'base64').toString('utf-8');
-    // Check if JSON
     if (decoded.startsWith('{') && decoded.endsWith('}')) {
       const parsed = JSON.parse(decoded);
       return parsed.url || parsed.src || parsed.link || '';
     }
-    // Check if HTML containing iframe
     const $ = cheerio.load(decoded);
     const iframeSrc = $('iframe').attr('src');
     if (iframeSrc) return iframeSrc;
@@ -398,6 +413,7 @@ function decodeStreamPayload(raw) {
 
 /**
  * Get episode streaming data with Multi-Quality support (360p, 480p, 720p, 1080p).
+ * Strict separation: Genuine Video Players in `servers`, File Downloads in `downloads`.
  */
 async function getEpisode(slug) {
   try {
@@ -432,7 +448,7 @@ async function getEpisode(slug) {
     const nextSlug = nextHref ? extractEpisodeSlug(nextHref) : null;
 
     // ---------------------------------------------------------------------------
-    // Multi-Quality & Multi-Server Stream Extraction
+    // 1. Streaming Players (Video Player Only)
     // ---------------------------------------------------------------------------
     const serverMap = new Map(); // serverName -> Map(quality -> url)
 
@@ -442,7 +458,6 @@ async function getEpisode(slug) {
         serverMap.set(serverName, new Map());
       }
       const qMap = serverMap.get(serverName);
-      // Clean quality string (e.g. 'm720p' -> '720p', 'mp4 1080p' -> '1080p')
       let q = quality.toUpperCase().replace(/^M/, '').trim();
       if (q.includes('1080')) q = '1080p';
       else if (q.includes('720')) q = '720p';
@@ -453,19 +468,18 @@ async function getEpisode(slug) {
       qMap.set(q, streamUrl);
     };
 
-    // 1. Direct Embed / Iframe on the page (Default Player)
-    $('#embed_holder iframe, .responsive-embed-stream iframe, div#embed-player iframe, iframe[src]').each((idx, el) => {
+    // A. Direct Embed / Iframe on the page (Primary Player)
+    $('#embed_holder iframe, .responsive-embed-stream iframe, div#embed-player iframe, iframe[src]').each((_, el) => {
       const src = $(el).attr('src') || '';
-      if (src && !src.includes('googleads') && !src.includes('doubleclick')) {
+      if (src && !src.includes('googleads') && !src.includes('doubleclick') && !src.includes('facebook')) {
         addStream('Player Utama', 'HD', src);
       }
     });
 
-    // 2. Mirrorstream by Quality (.m360p, .m480p, .m720p, .m1080p)
+    // B. Mirrorstream by Quality (.m360p, .m480p, .m720p, .m1080p)
     $('.mirrorstream ul').each((_, ul) => {
       const $ul = $(ul);
       const ulClass = $ul.attr('class') || '';
-      // Quality from ul class e.g. "m360p", "m720p", "m1080p"
       let qualityMatch = ulClass.match(/m(\d+p?)/i);
       let quality = qualityMatch ? qualityMatch[1] : 'HD';
 
@@ -480,12 +494,13 @@ async function getEpisode(slug) {
       });
     });
 
-    // 3. Download Section (.download ul li, .listdownload ul li)
-    // Extract per-host multi-quality stream links
+    // ---------------------------------------------------------------------------
+    // 2. Download Section (.download ul li, .listdownload ul li)
+    // ---------------------------------------------------------------------------
     const downloads = [];
     $('.download ul li, .listdownload ul li').each((_, el) => {
       const $el = $(el);
-      const qualityText = $el.find('strong, b').text().trim() || 'HD';
+      const qualityText = $el.find('strong, b').first().text().trim() || 'HD';
       const links = [];
 
       $el.find('a').each((__, a) => {
@@ -493,8 +508,12 @@ async function getEpisode(slug) {
         const href = $(a).attr('href') || '';
         if (href && host) {
           links.push({ host, url: href });
-          // Add as streamable player if host supports embedding
-          addStream(host, qualityText, href);
+
+          // ONLY add to streaming players if it is a genuine video embed provider (e.g. DesuStream, OtakuFiles, Filemoon, Streamtape)
+          // DO NOT add Mega, Acefile, Mediafire, Google Drive to video player!
+          if (isStreamPlayerHost(host) || isStreamPlayerHost(href)) {
+            addStream(host, qualityText, href);
+          }
         }
       });
 
@@ -507,14 +526,12 @@ async function getEpisode(slug) {
     const servers = [];
     for (const [serverName, qMap] of serverMap.entries()) {
       const streams = [];
-      // Sort qualities high to low
       const order = ['1080p', '720p', '480p', '360p', 'HD'];
       for (const q of order) {
         if (qMap.has(q)) {
           streams.push({ quality: q, url: qMap.get(q) });
         }
       }
-      // Add any remaining qualities
       for (const [q, url] of qMap.entries()) {
         if (!order.includes(q)) {
           streams.push({ quality: q, url });

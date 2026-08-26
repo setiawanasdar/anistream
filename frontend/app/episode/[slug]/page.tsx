@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import type { EpisodeDetail } from '@/lib/api';
 import VideoPlayer from '@/components/VideoPlayer';
 import EpisodeList from '@/components/EpisodeList';
 import SourceBadge from '@/components/SourceBadge';
@@ -54,11 +53,13 @@ export default function EpisodePage() {
           const animeRes = await api.getAnimeDetail(res.data.animeSlug);
           const rawEps: any[] = animeRes.data?.episodes_list || animeRes.data?.episodeList || animeRes.data?.episodes || [];
           if (Array.isArray(rawEps)) {
-            setAllEpisodes(rawEps.map((ep, idx) => ({
-              slug: ep.slug || String(ep.id || idx + 1),
-              title: ep.title || `Episode ${ep.episode_number || idx + 1}`,
-              episode_number: String(ep.episode_number || idx + 1),
-            })));
+            setAllEpisodes(
+              rawEps.map((ep, idx) => ({
+                slug: ep.slug || String(ep.id || idx + 1),
+                title: ep.title || `Episode ${ep.episode_number || idx + 1}`,
+                episode_number: String(ep.episode_number || idx + 1),
+              }))
+            );
           }
         } catch {
           // Ignore, episode list is optional
@@ -112,6 +113,7 @@ export default function EpisodePage() {
 
   const prevEp = episode.prev_episode || episode.prevEpisode;
   const nextEp = episode.next_episode || episode.nextEpisode;
+  const downloads = Array.isArray(episode.downloads) ? episode.downloads : [];
 
   return (
     <div>
@@ -126,8 +128,8 @@ export default function EpisodePage() {
         </div>
       </div>
 
-      {/* Episode info */}
-      <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-5">
+      {/* Episode info & content */}
+      <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-6">
         {/* Title & Anime */}
         <div className="space-y-1 mb-4">
           <h1 className="text-white text-xl sm:text-2xl font-bold leading-tight">{episode.title}</h1>
@@ -147,7 +149,7 @@ export default function EpisodePage() {
         </div>
 
         {/* Prev / Next navigation */}
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap mb-8">
           {prevEp && (
             <Link
               href={`/episode/${prevEp}`}
@@ -172,9 +174,52 @@ export default function EpisodePage() {
           )}
         </div>
 
-        {/* Episode list toggle */}
+        {/* Download Section (Separated from player) */}
+        {downloads.length > 0 && (
+          <div className="bg-card border border-[#222] rounded-xl p-5 mb-8 shadow-xl">
+            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-[#1a1a1a]">
+              <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              <h3 className="text-white font-bold text-base">Download Episode & Link Alternatif</h3>
+            </div>
+
+            <div className="space-y-3">
+              {downloads.map((dl: any, idx: number) => (
+                <div
+                  key={idx}
+                  className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-[#161616] rounded-lg border border-[#262626]"
+                >
+                  <span className="text-xs font-bold px-2.5 py-1 rounded bg-primary/20 text-primary-light border border-primary/30 w-fit">
+                    {dl.quality}
+                  </span>
+
+                  <div className="flex flex-wrap gap-2 flex-1">
+                    {Array.isArray(dl.links) &&
+                      dl.links.map((link: any, lIdx: number) => (
+                        <a
+                          key={lIdx}
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-[#222] hover:bg-primary text-gray-300 hover:text-white transition-colors border border-[#333]"
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                          </svg>
+                          {link.host}
+                        </a>
+                      ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Episode list */}
         {allEpisodes.length > 0 && (
-          <div className="mt-8">
+          <div className="mt-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-white font-semibold text-base">Pilih Episode</h3>
               <button
