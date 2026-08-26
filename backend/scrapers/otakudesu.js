@@ -697,9 +697,18 @@ async function getEpisode(slug) {
     };
 
     // A. Direct Embed / Iframe on the page (Primary Player)
+    // Skip desustream/desudrive/desu60 — they always block embedding
     $('#embed_holder iframe, .responsive-embed-stream iframe, div#embed-player iframe, iframe[src]').each((_, el) => {
       const src = $(el).attr('src') || '';
-      if (src && !src.includes('googleads') && !src.includes('doubleclick') && !src.includes('facebook')) {
+      if (
+        src &&
+        !src.includes('googleads') &&
+        !src.includes('doubleclick') &&
+        !src.includes('facebook') &&
+        !src.includes('desustream') &&
+        !src.includes('desudrive') &&
+        !src.includes('desu60')
+      ) {
         addStream('Player Utama', 'HD', src);
       }
     });

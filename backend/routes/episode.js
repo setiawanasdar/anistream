@@ -77,7 +77,6 @@ router.get('/:slug', async (req, res, next) => {
     }
 
     // --- Step 2: Build servers list ---
-    // --- Step 2: Build servers list ---
     const servers = [];
 
     const BLOCKED_STREAM_DOMAINS = [
