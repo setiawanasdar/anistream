@@ -256,12 +256,19 @@ async function getEpisode(slug) {
         !src.includes('doubleclick') &&
         !src.includes('facebook')
       ) {
+        const isBlogger = src.includes('blogger.com');
         servers.push({
-          server: 'Sub Indo - Oploverz HD',
-          streams: [
-            { quality: '720p', url: src },
-            { quality: 'HD', url: src },
-          ],
+          server: isBlogger ? 'Sub Indo - Oploverz (360p/480p SD)' : 'Sub Indo - Oploverz HD',
+          streams: isBlogger
+            ? [
+                { quality: '480p', url: src },
+                { quality: '360p', url: src },
+              ]
+            : [
+                { quality: '1080p', url: src },
+                { quality: '720p', url: src },
+                { quality: 'HD', url: src },
+              ],
         });
       }
     });

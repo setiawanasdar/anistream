@@ -93,14 +93,43 @@ router.get('/:slug', async (req, res, next) => {
       'yourupload', 'mixdrop', 'vidoza', 'upstream', 'vudeo',
     ];
 
-    // A. Add valid Sub Indo streams from scraper (Filedon, Vidhide, Mega Embed, etc.)
+    // A. Add Universal Ultra HD players (1080p / 720p Remastered Source)
+    if (malId) {
+      servers.push({
+        server: '▶ Server HD 1 (Ultra HD 1080p / 720p Sub)',
+        streams: [
+          { quality: '1080p', url: `https://vidlink.pro/anime/${malId}/${epNum}/sub` },
+          { quality: '720p', url: `https://vidlink.pro/anime/${malId}/${epNum}/sub` },
+          { quality: 'HD', url: `https://vidlink.pro/anime/${malId}/${epNum}/sub` },
+        ],
+      });
+
+      servers.push({
+        server: '▶ Server HD 2 (SmashyStream 1080p Full HD)',
+        streams: [
+          { quality: '1080p', url: `https://embed.smashystream.com/playere.php?tmdb=0&mal=${malId}&ep=${epNum}` },
+          { quality: '720p', url: `https://embed.smashystream.com/playere.php?tmdb=0&mal=${malId}&ep=${epNum}` },
+          { quality: 'HD', url: `https://embed.smashystream.com/playere.php?tmdb=0&mal=${malId}&ep=${epNum}` },
+        ],
+      });
+
+      servers.push({
+        server: '▶ Server HD 3 (Ultra HD 1080p Dub)',
+        streams: [
+          { quality: '1080p', url: `https://vidlink.pro/anime/${malId}/${epNum}/dub` },
+          { quality: '720p', url: `https://vidlink.pro/anime/${malId}/${epNum}/dub` },
+          { quality: 'HD', url: `https://vidlink.pro/anime/${malId}/${epNum}/dub` },
+        ],
+      });
+    }
+
+    // B. Add Sub Indo streams from scraper (Filedon, Vidhide, Blogger SD, etc.)
     if (scraperData && Array.isArray(scraperData.servers)) {
       for (const s of scraperData.servers) {
         if (s && Array.isArray(s.streams) && s.streams.length > 0) {
           const validStreams = s.streams.filter((st) => {
             const url = (st.url || '').toLowerCase();
             if (!url.startsWith('http')) return false;
-            // Allow mega embed player, block download files
             if (url.includes('mega.nz/file') || url.includes('mega.nz/#!')) return false;
             return !BLOCKED_STREAM_DOMAINS.some((domain) => url.includes(domain));
           });
@@ -115,36 +144,6 @@ router.get('/:slug', async (req, res, next) => {
           }
         }
       }
-    }
-
-    // B. Add Universal HD players (VidLink + SmashyStream Multi-Source)
-    if (malId) {
-      servers.push({
-        server: '▶ Server HD 1 (Multi-Quality Sub)',
-        streams: [
-          { quality: '1080p', url: `https://vidlink.pro/anime/${malId}/${epNum}/sub` },
-          { quality: '720p', url: `https://vidlink.pro/anime/${malId}/${epNum}/sub` },
-          { quality: 'HD', url: `https://vidlink.pro/anime/${malId}/${epNum}/sub` },
-        ],
-      });
-
-      servers.push({
-        server: '▶ Server HD 2 (SmashyStream HD)',
-        streams: [
-          { quality: '1080p', url: `https://embed.smashystream.com/playere.php?tmdb=0&mal=${malId}&ep=${epNum}` },
-          { quality: '720p', url: `https://embed.smashystream.com/playere.php?tmdb=0&mal=${malId}&ep=${epNum}` },
-          { quality: 'HD', url: `https://embed.smashystream.com/playere.php?tmdb=0&mal=${malId}&ep=${epNum}` },
-        ],
-      });
-
-      servers.push({
-        server: '▶ Server HD 3 (Multi-Quality Dub)',
-        streams: [
-          { quality: '1080p', url: `https://vidlink.pro/anime/${malId}/${epNum}/dub` },
-          { quality: '720p', url: `https://vidlink.pro/anime/${malId}/${epNum}/dub` },
-          { quality: 'HD', url: `https://vidlink.pro/anime/${malId}/${epNum}/dub` },
-        ],
-      });
     }
 
     // Fallback: If still 0 servers and no malId, try alt resolution
