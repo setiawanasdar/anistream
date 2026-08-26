@@ -172,8 +172,7 @@ async function searchAnime(query, page = 1, perPage = 20) {
 
 /**
  * Resolve the AniList ID for a given anime title string.
- * Tries the exact query, then common romanization variants.
- * Returns null if nothing is found.
+ * Tries expanded title, season matching, common romanization, and base name fallbacks.
  * @param {string} titleQuery  - Raw title string (may be English, romaji, or slug-style)
  * @returns {Promise<number|null>} AniList numeric ID
  */
@@ -181,18 +180,51 @@ async function resolveAnilistId(titleQuery) {
   if (!titleQuery) return null;
 
   // Clean the query: remove common suffixes, normalise spacing
-  const cleanQuery = titleQuery
+  let cleanQuery = titleQuery
     .replace(/sub(?:\s+indo)?$/i, '')
-    .replace(/episode[\s-]*\d+/gi, '')
+    .replace(/episode[\s-]*\d+(\.\d+)?/gi, '')
     .replace(/[-_]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
   if (!cleanQuery) return null;
 
+  // Expand common short codes and abbreviations
+  const expansions = [
+    { regex: /\bkmtu\b/gi, rep: 'kimetsu' },
+    { regex: /\bsnk\b/gi, rep: 'shingeki no kyojin' },
+    { regex: /\bmha\b/gi, rep: 'my hero academia' },
+    { regex: /\bsao\b/gi, rep: 'sword art online' },
+    { regex: /\baot\b/gi, rep: 'attack on titan' },
+    { regex: /\bjjk\b/gi, rep: 'jujutsu kaisen' },
+    { regex: /\bfmab\b/gi, rep: 'fullmetal alchemist brotherhood' },
+    { regex: /\bop\b/gi, rep: 'one piece' },
+    { regex: /\bs(\d+)\b/gi, rep: 'season $1' },
+  ];
+
+  let expanded = cleanQuery;
+  for (const exp of expansions) {
+    expanded = expanded.replace(exp.regex, exp.rep);
+  }
+
+  // Generate candidate search queries in order of precision
+  const queriesToTry = new Set();
+  queriesToTry.add(expanded);
+  queriesToTry.add(cleanQuery);
+
+  // If there's a season (e.g. "jujutsu kaisen season 2"), also try the base name
+  const baseName = expanded.replace(/\b(?:season\s*\d+|s\d+|\d+(?:nd|rd|th|st)\s*season|part\s*\d+)\b/gi, '').trim();
+  if (baseName && baseName !== expanded) {
+    queriesToTry.add(baseName);
+  }
+
+  if (/kimetsu/i.test(expanded)) queriesToTry.add('demon slayer');
+  if (/shingeki/i.test(expanded)) queriesToTry.add('attack on titan');
+  if (/boku no hero/i.test(expanded)) queriesToTry.add('my hero academia');
+
   const gql = `
     query ($search: String) {
-      Page(page: 1, perPage: 5) {
+      Page(page: 1, perPage: 8) {
         media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
           id
           idMal
@@ -205,30 +237,36 @@ async function resolveAnilistId(titleQuery) {
     }
   `;
 
-  // Try original query first, then try without common Japanese suffixes
-  const queriesToTry = [cleanQuery];
-
-  // Expand: if query contains Japanese suffix hint, try romaji version
-  if (/no yaiba/i.test(cleanQuery)) queriesToTry.push('demon slayer');
-  if (/kimetsu/i.test(cleanQuery)) queriesToTry.push('demon slayer kimetsu no yaiba');
-  if (/shingeki/i.test(cleanQuery)) queriesToTry.push('attack on titan');
-  if (/boku no hero/i.test(cleanQuery)) queriesToTry.push('my hero academia');
-  if (/sword art/i.test(cleanQuery)) queriesToTry.push('sword art online');
-
   for (const q of queriesToTry) {
     try {
       const data = await gqlQuery(gql, { search: q });
       const mediaList = data?.Page?.media || [];
       if (mediaList.length > 0) {
-        // Prefer TV format, then anything
-        const tvAnime = mediaList.find(m => m.format === 'TV') || mediaList[0];
+        // If the original query asked for a specific season (e.g. season 2), match it
+        const sMatch = expanded.match(/season\s*(\d+)/i) || expanded.match(/s(\d+)/i);
+        if (sMatch) {
+          const sNum = sMatch[1];
+          const matchSeason = mediaList.find((m) => {
+            const fullTitle = `${m.title?.romaji || ''} ${m.title?.english || ''}`.toLowerCase();
+            return (
+              fullTitle.includes(`season ${sNum}`) ||
+              fullTitle.includes(`${sNum}nd season`) ||
+              fullTitle.includes(`${sNum}rd season`) ||
+              fullTitle.includes(`${sNum}th season`) ||
+              fullTitle.includes(`${sNum}st season`) ||
+              fullTitle.includes(`part ${sNum}`)
+            );
+          });
+          if (matchSeason) return matchSeason.id;
+        }
+
+        // Otherwise prefer TV format, then first match
+        const tvAnime = mediaList.find((m) => m.format === 'TV') || mediaList[0];
         return tvAnime.id;
       }
     } catch {
-      // ignore individual query failures
+      // try next candidate query
     }
-    // Small delay to respect rate limit
-    await new Promise(r => setTimeout(r, 100));
   }
 
   return null;
