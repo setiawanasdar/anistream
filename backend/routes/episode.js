@@ -4,6 +4,15 @@
  * Episode routes with Multi-Source Resilience
  * Mounted at: /api/episode
  *
+ * Strategy:
+ *  1. Try Otakudesu scraper to get episode info + any working stream iframes.
+ *  2. In parallel, resolve an AniList ID for the anime title.
+ *  3. Build final server list:
+ *       a) vidsrc.me   (universal HD, uses AniList ID) — always first if ID found
+ *       b) vidsrc.pm   (backup, uses AniList ID)
+ *       c) Any valid iframe streams scraped from Otakudesu
+ *  4. Return merged data. Download links are kept separate (in `downloads`).
+ *
  * GET /api/episode/:slug  - Episode streaming data and download links
  */
 
@@ -12,9 +21,43 @@ const router = express.Router();
 const { withFallback } = require('../utils/fallback');
 const { cacheMiddleware } = require('../middleware/cache');
 const { fallbackOrder } = require('../config/sources');
-const anilist = require('../scrapers/anilist');
+const { resolveAnilistId } = require('../scrapers/anilist');
 
 router.use(cacheMiddleware);
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract episode number from a slug string.
+ * Handles patterns like:
+ *   steins-gate-episode-1-sub-indo
+ *   one-piece-episode-1100-sub-indo
+ *   sword-art-online-episode-1
+ */
+function extractEpisodeNumber(slug) {
+  // Match "episode-<number>" pattern
+  const m1 = slug.match(/episode[- _](\d+(?:\.\d+)?)/i);
+  if (m1) return m1[1];
+  // Fallback: trailing number
+  const m2 = slug.match(/(\d+)[^0-9]*$/);
+  if (m2) return m2[1];
+  return '1';
+}
+
+/**
+ * Extract a clean anime search name from a slug.
+ * Removes: "episode-N", "sub-indo", trailing/leading dashes.
+ */
+function extractAnimeName(slug) {
+  return slug
+    .replace(/episode[- _]\d+(?:\.\d+)?.*/i, '')
+    .replace(/sub[- _]?indo.*/i, '')
+    .replace(/[- _]+$/, '')
+    .replace(/[-_]+/g, ' ')
+    .trim();
+}
 
 // ---------------------------------------------------------------------------
 // GET /api/episode/:slug
@@ -23,113 +66,121 @@ router.get('/:slug', async (req, res, next) => {
   const { slug } = req.params;
 
   try {
-    let episodeData = null;
-    let sourceUsed = 'otakudesu';
+    // --- Step 1: Try Otakudesu (and fallback scrapers) in parallel with AniList ID lookup ---
+    const cleanSlug = decodeURIComponent(slug)
+      .replace(/^https?:\/\/[^/]+\/episode\//, '')
+      .replace(/\/$/, '');
 
-    // 1. Try scraper source (Otakudesu)
-    try {
-      const { data, source } = await withFallback(fallbackOrder, 'getEpisode', slug);
-      if (data) {
-        episodeData = data;
-        sourceUsed = source;
-      }
-    } catch {
-      // Scraper failed, will synthesize from AniList
+    const epNum = extractEpisodeNumber(cleanSlug);
+    const animeName = extractAnimeName(cleanSlug);
+
+    // Run scraper and AniList ID resolution concurrently
+    const [scraperResult, anilistId] = await Promise.allSettled([
+      withFallback(fallbackOrder, 'getEpisode', slug).catch(() => null),
+      resolveAnilistId(animeName),
+    ]);
+
+    const scraperData = scraperResult.status === 'fulfilled' ? scraperResult.value?.data : null;
+    const aniId = anilistId.status === 'fulfilled' ? anilistId.value : null;
+
+    // --- Step 2: Build servers list ---
+    const servers = [];
+
+    // Universal HD players — always add if we have an AniList ID
+    if (aniId) {
+      servers.push({
+        server: '▶ Server HD 1',
+        streams: [
+          { quality: 'HD', url: `https://vidsrc.me/embed/anime?anilist=${aniId}&episode=${epNum}` },
+        ],
+      });
+
+      servers.push({
+        server: '▶ Server HD 2 (Backup)',
+        streams: [
+          { quality: 'HD', url: `https://vidsrc.pm/embed/anime?anilist=${aniId}&episode=${epNum}` },
+        ],
+      });
     }
 
-    // Extract episode number and anime search title
-    const cleanSlug = slug.replace(/^https?:\/\/[^/]+\/episode\//, '').replace(/\/$/, '').replace(/-sub-indo$/i, '');
-    const numMatch = cleanSlug.match(/episode-(\d+(\.\d+)?)/i) || cleanSlug.match(/(\d+)$/);
-    const epNum = numMatch ? numMatch[1] : '1';
-
-    let animeSearchName = episodeData?.anime || episodeData?.title || '';
-    if (!animeSearchName || animeSearchName.toLowerCase().includes('otakudesu')) {
-      animeSearchName = cleanSlug
-        .replace(/^kmtu/, 'kimetsu')
-        .replace(/-episode-\d+.*$/i, '')
-        .replace(/-/g, ' ')
-        .trim();
-    }
-
-    // 2. Resolve AniList ID for Universal HD Streams
-    let anilistId = null;
-    try {
-      const searchRes = await anilist.searchAnime(animeSearchName);
-      if (searchRes.length > 0) {
-        anilistId = searchRes[0].id || searchRes[0].anilistId;
-      } else {
-        // Try alternate Romaji search
-        const altTitles = await anilist.getAlternateTitles(animeSearchName);
-        if (altTitles.length > 0) {
-          const altRes = await anilist.searchAnime(altTitles[0]);
-          if (altRes.length > 0) {
-            anilistId = altRes[0].id || altRes[0].anilistId;
+    // Otakudesu scraper streams (if any valid iframes exist)
+    if (scraperData && Array.isArray(scraperData.servers)) {
+      for (const s of scraperData.servers) {
+        if (s && Array.isArray(s.streams) && s.streams.length > 0) {
+          // Only include if streams are actual embed URLs (not download hosts)
+          const validStreams = s.streams.filter(st => {
+            const url = (st.url || '').toLowerCase();
+            return url.startsWith('http') &&
+              !url.includes('mega.nz') &&
+              !url.includes('mediafire') &&
+              !url.includes('acefile') &&
+              !url.includes('gdrive') &&
+              !url.includes('zippyshare') &&
+              !url.includes('kumpulbagi') &&
+              !url.includes('otakufiles') &&
+              !url.includes('racaty') &&
+              !url.includes('letsupload') &&
+              !url.includes('hxfile') &&
+              !url.includes('hexupload') &&
+              !url.includes('fembed') &&
+              !url.includes('uplod') &&
+              !url.includes('moevideo') &&
+              !url.includes('upfile');
+          });
+          if (validStreams.length > 0) {
+            servers.push({
+              server: `Sub Indo - ${s.server}`,
+              streams: validStreams,
+            });
           }
         }
       }
-    } catch {
-      // ignore
     }
 
-    // 3. Assemble Servers Array (Ensure No Dead Links)
-    const servers = [];
-
-    // Add Universal HD Servers if AniList ID is found
-    if (anilistId) {
+    // If NO servers at all, create a placeholder message server
+    if (servers.length === 0) {
       servers.push({
-        server: 'Server HD 1 (MegaCloud / Fast)',
-        streams: [
-          { quality: '1080p', url: `https://vidsrc.me/embed/anime?anilist=${anilistId}&episode=${epNum}` },
-          { quality: '720p', url: `https://vidsrc.me/embed/anime?anilist=${anilistId}&episode=${epNum}` },
-          { quality: '480p', url: `https://vidsrc.me/embed/anime?anilist=${anilistId}&episode=${epNum}` },
-          { quality: 'HD', url: `https://vidsrc.me/embed/anime?anilist=${anilistId}&episode=${epNum}` },
-        ],
-      });
-
-      servers.push({
-        server: 'Server HD 2 (Multi-Sub / Backup)',
-        streams: [
-          { quality: '1080p', url: `https://vidsrc.pm/embed/anime?anilist=${anilistId}&episode=${epNum}` },
-          { quality: '720p', url: `https://vidsrc.pm/embed/anime?anilist=${anilistId}&episode=${epNum}` },
-          { quality: 'HD', url: `https://vidsrc.pm/embed/anime?anilist=${anilistId}&episode=${epNum}` },
-        ],
+        server: 'Tidak Tersedia',
+        streams: [],
+        message: 'Tidak ada stream yang tersedia untuk episode ini.',
       });
     }
 
-    // Append any genuine scraper stream players from Otakudesu
-    if (episodeData && Array.isArray(episodeData.servers)) {
-      for (const s of episodeData.servers) {
-        if (s && s.streams && s.streams.length > 0) {
-          servers.push({
-            server: `${s.server} (Sub Indo)`,
-            streams: s.streams,
-          });
-        }
-      }
-    }
-
-    // Prev / Next episode slug calculation
+    // --- Step 3: Build prev/next episode slugs ---
     const currentNum = parseInt(epNum, 10) || 1;
-    const baseEpisodeSlug = cleanSlug.replace(/-episode-\d+.*$/i, '');
-    const prevSlug = episodeData?.prev_episode || (currentNum > 1 ? `${baseEpisodeSlug}-episode-${currentNum - 1}-sub-indo` : null);
-    const nextSlug = episodeData?.next_episode || `${baseEpisodeSlug}-episode-${currentNum + 1}-sub-indo`;
+    const baseSlug = cleanSlug
+      .replace(/episode[- _]\d+(?:\.\d+)?.*/i, '')
+      .replace(/[- _]+$/, '');
+
+    const prevSlug = scraperData?.prev_episode ||
+      (currentNum > 1 ? `${baseSlug}-episode-${currentNum - 1}-sub-indo` : null);
+    const nextSlug = scraperData?.next_episode ||
+      `${baseSlug}-episode-${currentNum + 1}-sub-indo`;
+
+    // --- Step 4: Assemble response ---
+    const titleFormatted = animeName
+      .split(' ')
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
 
     const finalData = {
-      title: episodeData?.title || `${animeSearchName.replace(/\b\w/g, (c) => c.toUpperCase())} Episode ${epNum}`,
+      title: scraperData?.title || `${titleFormatted} Episode ${epNum}`,
       slug: cleanSlug,
-      anime: episodeData?.anime || animeSearchName.replace(/\b\w/g, (c) => c.toUpperCase()),
-      animeSlug: episodeData?.animeSlug || baseEpisodeSlug,
+      anime: scraperData?.anime || titleFormatted,
+      animeSlug: scraperData?.animeSlug || baseSlug,
+      episode: epNum,
+      anilistId: aniId || null,
       prev_episode: prevSlug,
       next_episode: nextSlug,
       prevEpisode: prevSlug,
       nextEpisode: nextSlug,
       servers,
-      downloads: episodeData?.downloads || [],
+      downloads: scraperData?.downloads || [],
     };
 
     res.json({
       success: true,
-      source: servers.length > 0 ? (anilistId ? 'multi-source' : sourceUsed) : sourceUsed,
+      source: aniId ? 'multi-source' : 'otakudesu',
       data: finalData,
     });
   } catch (err) {

@@ -22,6 +22,7 @@ const ANILIST_ENDPOINT = 'https://graphql.anilist.co';
 // Reusable media fields
 const MEDIA_FIELDS = `
   id
+  idMal
   title {
     romaji
     english
@@ -48,6 +49,7 @@ const MEDIA_FIELDS = `
   seasonYear
   tags { name }
   siteUrl
+  synonyms
 `;
 
 // ---------------------------------------------------------------------------
@@ -130,8 +132,12 @@ function normalise(media) {
     year,
     // AniList-specific extras (helpful for metadata enrichment)
     anilistId:  media.id,
+    idMal:      media.idMal || null,
     siteUrl:    media.siteUrl || null,
     popularity: media.popularity || null,
+    synonyms:   media.synonyms || [],
+    titleRomaji: media.title.romaji || null,
+    titleEnglish: media.title.english || null,
   };
 }
 
@@ -162,6 +168,70 @@ async function searchAnime(query, page = 1, perPage = 20) {
     console.error('[anilist] searchAnime error:', err.message);
     return [];
   }
+}
+
+/**
+ * Resolve the AniList ID for a given anime title string.
+ * Tries the exact query, then common romanization variants.
+ * Returns null if nothing is found.
+ * @param {string} titleQuery  - Raw title string (may be English, romaji, or slug-style)
+ * @returns {Promise<number|null>} AniList numeric ID
+ */
+async function resolveAnilistId(titleQuery) {
+  if (!titleQuery) return null;
+
+  // Clean the query: remove common suffixes, normalise spacing
+  const cleanQuery = titleQuery
+    .replace(/sub(?:\s+indo)?$/i, '')
+    .replace(/episode[\s-]*\d+/gi, '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!cleanQuery) return null;
+
+  const gql = `
+    query ($search: String) {
+      Page(page: 1, perPage: 5) {
+        media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
+          id
+          idMal
+          title { romaji english native }
+          format
+          episodes
+          synonyms
+        }
+      }
+    }
+  `;
+
+  // Try original query first, then try without common Japanese suffixes
+  const queriesToTry = [cleanQuery];
+
+  // Expand: if query contains Japanese suffix hint, try romaji version
+  if (/no yaiba/i.test(cleanQuery)) queriesToTry.push('demon slayer');
+  if (/kimetsu/i.test(cleanQuery)) queriesToTry.push('demon slayer kimetsu no yaiba');
+  if (/shingeki/i.test(cleanQuery)) queriesToTry.push('attack on titan');
+  if (/boku no hero/i.test(cleanQuery)) queriesToTry.push('my hero academia');
+  if (/sword art/i.test(cleanQuery)) queriesToTry.push('sword art online');
+
+  for (const q of queriesToTry) {
+    try {
+      const data = await gqlQuery(gql, { search: q });
+      const mediaList = data?.Page?.media || [];
+      if (mediaList.length > 0) {
+        // Prefer TV format, then anything
+        const tvAnime = mediaList.find(m => m.format === 'TV') || mediaList[0];
+        return tvAnime.id;
+      }
+    } catch {
+      // ignore individual query failures
+    }
+    // Small delay to respect rate limit
+    await new Promise(r => setTimeout(r, 100));
+  }
+
+  return null;
 }
 
 /**
@@ -319,4 +389,5 @@ module.exports = {
   getCurrentSeason,
   getOngoing,
   getAlternateTitles,
+  resolveAnilistId,
 };

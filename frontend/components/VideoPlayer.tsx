@@ -9,10 +9,12 @@ interface VideoPlayerProps {
 }
 
 const EMBED_DOMAINS = [
-  'embed', 'player', 'stream', 'desustream', 'desudrive', 'otakufiles',
+  'embed', 'player', 'stream', 'desustream', 'desudrive',
   'filemoon', 'vidplay', 'vidstream', 'mp4upload', 'streamtape',
   'doodstream', 'dood', 'yourupload', 'okru', 'streamsb', 'sbplay',
-  'sendvid', 'streamwish', 'hxfile', 'blogger.com', 'drive.google', 'gdrive',
+  'sendvid', 'streamwish', 'blogger.com', 'drive.google',
+  // Universal HD players
+  'vidsrc.me', 'vidsrc.pm', 'vidsrc.in', 'vidsrc.net',
 ];
 
 function isEmbedUrl(url: string): boolean {
