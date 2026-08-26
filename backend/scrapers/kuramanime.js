@@ -188,13 +188,20 @@ async function searchAnime(query) {
   }
 }
 
+function isKuramanimeSlug(slug = '') {
+  return /^\d+\//.test(slug) || /^anime\/\d+\//.test(slug) || /\/episode\/\d+/.test(slug);
+}
+
 async function getAnimeDetail(slug) {
+  if (!isKuramanimeSlug(slug)) return null;
+
   try {
-    const url = `${getBaseUrl()}/anime/${slug}`;
+    const cleanSlug = slug.replace(/^anime\//, '');
+    const url = `${getBaseUrl()}/anime/${cleanSlug}`;
     const html = await fetchHtml(url);
     const $ = cheerio.load(html);
 
-    const title = cleanTitle($('.anime__details__title h3, h3').first().text().trim());
+    const title = cleanTitle($('.anime__details__title h3, h3').first().text().trim(), cleanSlug);
     const japanese = $('.anime__details__title span').first().text().trim();
 
     const imgEl = $('.anime__details__pic, .product__item__pic, img').first();
@@ -240,18 +247,21 @@ async function getAnimeDetail(slug) {
     };
   } catch (err) {
     console.error('[kuramanime] getAnimeDetail error:', err.message);
-    throw err;
+    return null;
   }
 }
 
 async function getEpisode(slug) {
+  if (!isKuramanimeSlug(slug)) return null;
+
   try {
-    const url = `${getBaseUrl()}/${slug}`;
+    const cleanSlug = slug.startsWith('anime/') ? slug : `anime/${slug}`;
+    const url = `${getBaseUrl()}/${cleanSlug}`;
     const html = await fetchHtml(url);
     const $ = cheerio.load(html);
 
     const title = $('h3.text-white, .anime__details__title h3, h3').first().text().trim();
-    const animeTitle = cleanTitle(title.replace(/Episode\s*\d+.*/i, ''));
+    const animeTitle = cleanTitle(title.replace(/Episode\s*\d+.*/i, ''), cleanSlug);
 
     const servers = [];
     $('iframe[src]').each((_, ifr) => {
@@ -274,7 +284,7 @@ async function getEpisode(slug) {
     };
   } catch (err) {
     console.error('[kuramanime] getEpisode error:', err.message);
-    throw err;
+    return null;
   }
 }
 

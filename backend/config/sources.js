@@ -39,5 +39,5 @@ module.exports = {
     },
   },
   /** Ordered list of active sources to try when calling withFallback() */
-  fallbackOrder: ['kuramanime', 'otakudesu', 'oploverz'],
+  fallbackOrder: ['otakudesu', 'kuramanime', 'oploverz'],
 };
