@@ -570,6 +570,7 @@ async function getAnimeDetail(slug) {
       episodeList,
       episodes_list: episodeList,
       batchLinks,
+    };
   } catch (err) {
     return null;
   }

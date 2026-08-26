@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useMemo } from 'react';
 import Link from 'next/link';
 import AnimeCard from './AnimeCard';
 import AnimeCardSkeleton from './AnimeCardSkeleton';
@@ -17,6 +17,17 @@ const SKELETON_COUNT = 8;
 
 export default function AnimeRow({ title, animes, loading = false, seeAllHref }: AnimeRowProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const uniqueAnimes = useMemo(() => {
+    if (!Array.isArray(animes)) return [];
+    const seen = new Set<string>();
+    return animes.filter((anime) => {
+      const key = anime.slug || anime.id || anime.title;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [animes]);
 
   const scroll = (direction: 'left' | 'right') => {
     if (!scrollRef.current) return;
@@ -69,7 +80,7 @@ export default function AnimeRow({ title, animes, loading = false, seeAllHref }:
             ? Array.from({ length: SKELETON_COUNT }).map((_, i) => (
                 <AnimeCardSkeleton key={i} />
               ))
-            : animes.map((anime) => (
+            : uniqueAnimes.map((anime) => (
                 <AnimeCard
                   key={anime.id || anime.slug}
                   id={anime.id}
@@ -84,7 +95,7 @@ export default function AnimeRow({ title, animes, loading = false, seeAllHref }:
               ))}
 
           {/* Empty state */}
-          {!loading && animes.length === 0 && (
+          {!loading && uniqueAnimes.length === 0 && (
             <p className="text-gray-500 text-sm py-4">Tidak ada anime ditemukan.</p>
           )}
         </div>

@@ -27,7 +27,7 @@ async function getOngoing() {
     const $ = cheerio.load(html);
     const results = [];
 
-    $('.listupd article, .bsx, .animposx').each((_, el) => {
+    $('.listupd .bsx, .animposx').each((_, el) => {
       const $el = $(el);
       const linkEl = $el.find('a').first();
       const title = $el.find('.tt h2, h2, .title').text().trim();
@@ -55,7 +55,12 @@ async function getOngoing() {
       }
     });
 
-    return results;
+    const seen = new Set();
+    return results.filter((item) => {
+      if (seen.has(item.slug)) return false;
+      seen.add(item.slug);
+      return true;
+    });
   } catch (err) {
     console.error('[oploverz] getOngoing error:', err.message);
     return [];
@@ -69,7 +74,7 @@ async function getComplete() {
     const $ = cheerio.load(html);
     const results = [];
 
-    $('.listupd article, .bsx, .animposx').each((_, el) => {
+    $('.listupd .bsx, .animposx').each((_, el) => {
       const $el = $(el);
       const linkEl = $el.find('a').first();
       const title = $el.find('.tt h2, h2, .title').text().trim();
@@ -94,7 +99,12 @@ async function getComplete() {
       }
     });
 
-    return results;
+    const seen = new Set();
+    return results.filter((item) => {
+      if (seen.has(item.slug)) return false;
+      seen.add(item.slug);
+      return true;
+    });
   } catch (err) {
     console.error('[oploverz] getComplete error:', err.message);
     return [];
