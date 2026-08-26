@@ -56,23 +56,38 @@ const MEDIA_FIELDS = `
 // Helper: execute a GraphQL query
 // ---------------------------------------------------------------------------
 
-async function gqlQuery(query, variables = {}) {
-  const response = await axios.post(
-    ANILIST_ENDPOINT,
-    { query, variables },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      timeout: 10000,
+async function gqlQuery(query, variables = {}, maxRetries = 2) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await axios.post(
+        ANILIST_ENDPOINT,
+        { query, variables },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          timeout: 10000,
+        }
+      );
+      if (response.data.errors) {
+        const msg = response.data.errors.map((e) => e.message).join(', ');
+        throw new Error(`AniList API error: ${msg}`);
+      }
+      return response.data.data;
+    } catch (err) {
+      const status = err.response?.status;
+      // Retry on rate-limit (429) or server error (5xx)
+      if ((status === 429 || (status >= 500 && status < 600)) && attempt < maxRetries) {
+        const retryAfter = parseInt(err.response?.headers?.['retry-after'] || '1', 10);
+        const delay = Math.max(retryAfter * 1000, 600 * (attempt + 1));
+        console.warn(`[anilist] Rate-limited (${status}), retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
     }
-  );
-  if (response.data.errors) {
-    const msg = response.data.errors.map((e) => e.message).join(', ');
-    throw new Error(`AniList API error: ${msg}`);
   }
-  return response.data.data;
 }
 
 // ---------------------------------------------------------------------------

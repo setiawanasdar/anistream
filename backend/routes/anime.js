@@ -83,15 +83,32 @@ router.get('/search', async (req, res) => {
   try {
     const otakudesu = require('../scrapers/otakudesu');
 
-    // Run both in parallel — AniList is primary (fast, complete, series-only)
-    // Otakudesu gets 8s to respond, used to enrich/replace matching results
+    // AniList search with retry (handles rate-limiting gracefully)
+    async function anilistWithRetry(query, retries = 2) {
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          const results = await anilist.searchAnime(query, 1, 50);
+          if (results && results.length > 0) return results;
+        } catch (err) {
+          console.warn(`[search] AniList attempt ${attempt + 1} failed:`, err.message);
+          if (attempt < retries) {
+            await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+          }
+        }
+      }
+      return [];
+    }
+
+    // Run both in parallel
     const [anilistResults, otakuResults] = await Promise.all([
-      anilist.searchAnime(q, 1, 50).catch(() => []),
+      anilistWithRetry(q),
       Promise.race([
         otakudesu.searchAnime(q),
         new Promise(resolve => setTimeout(() => resolve([]), 8000)),
       ]).catch(() => []),
     ]);
+
+    console.log(`[search] q="${q}" anilist=${anilistResults.length} otakudesu=${(otakuResults || []).length}`);
 
     // Filter Otakudesu: skip per-episode entries (title/slug contains "episode N")
     const validOtakuResults = (otakuResults || []).filter(item => {
@@ -101,26 +118,25 @@ router.get('/search', async (req, res) => {
       return true;
     });
 
-    // Merge: use AniList as base (large result set), overlay with Otakudesu data where slug matches
-    // This gives us: AniList's broad coverage + Otakudesu's Sub Indo posters & ratings
+    // Merge strategy: AniList always included, Otakudesu enriches when available
     let finalResults;
-    if (validOtakuResults.length > 0 && anilistResults.length === 0) {
-      // Only Otakudesu responded
-      finalResults = validOtakuResults;
-    } else if (validOtakuResults.length > 0 && anilistResults.length > 0) {
-      // Both responded: Otakudesu results first (exact Sub Indo matches), then AniList extras
-      const otakuSlugs = new Set(validOtakuResults.map(r => r.slug));
+    if (anilistResults.length > 0 && validOtakuResults.length > 0) {
+      // Both: Otakudesu Sub Indo matches first, then AniList extras (deduplicated)
       const anilistExtras = anilistResults.filter(r => {
-        // Include AniList entries that aren't already covered by Otakudesu results
         const titleNorm = r.title.toLowerCase().replace(/[^a-z0-9]/g, '');
         return !validOtakuResults.some(or =>
           or.title.toLowerCase().replace(/[^a-z0-9]/g, '') === titleNorm
         );
       });
       finalResults = [...validOtakuResults, ...anilistExtras];
+    } else if (anilistResults.length > 0) {
+      // Only AniList — always proper series, never episodes
+      finalResults = anilistResults;
+    } else if (validOtakuResults.length > 0) {
+      // Only Otakudesu
+      finalResults = validOtakuResults;
     } else {
-      // Only AniList responded — use it (always proper series, never episodes)
-      finalResults = anilistResults || [];
+      finalResults = [];
     }
 
     return res.json({ success: true, source: 'combined', query: q, data: finalResults });
