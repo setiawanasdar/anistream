@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * Kuramanime Scraper (Inspired by wajik-anime-api)
- * Base domain: https://kuramanime.ing
+ * Kuramanime Scraper (Integrated from wajik-anime-api)
+ * Base domain: https://v20.kuramanime.ing
  */
 
 const cheerio = require('cheerio');
@@ -10,22 +10,35 @@ const { fetchHtml } = require('../utils/fetcher');
 const { sources } = require('../config/sources');
 
 function getBaseUrl() {
-  return sources?.kuramanime?.baseUrl || 'https://kuramanime.ing';
+  return sources?.kuramanime?.baseUrl || 'https://v20.kuramanime.ing';
 }
 
 function extractSlug(url = '') {
   if (!url) return '';
-  const match = url.match(/\/anime\/(\d+\/[^/]+)/);
+  const match = url.match(/\/anime\/([^/]+\/[^/?#]+)/);
   if (match) return match[1];
-  const clean = url.replace(/^https?:\/\/[^/]+\//, '').replace(/\/$/, '');
-  return clean;
+  const match2 = url.match(/\/anime\/([^/?#]+)/);
+  if (match2) return match2[1];
+  return url.replace(/^https?:\/\/[^/]+\//, '').replace(/\/$/, '');
 }
 
-function cleanTitle(raw = '') {
-  return raw
-    .replace(/^(TV|Movie|Special|OVA|ONA|CM)(BD|HD|WEB-DL)?/i, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+function cleanTitle(raw = '', slug = '') {
+  const lines = (raw || '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && !l.toLowerCase().includes('loading') && l !== 'SELESAI' && !/^\d+(\.\d+)?$/.test(l));
+  const candidate = lines[lines.length - 1] || '';
+  if (candidate.length > 2) {
+    return candidate
+      .replace(/^(TV|Movie|Special|OVA|ONA|CM)(BD|HD|WEB-DL)?/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+  if (slug) {
+    const slugPart = slug.includes('/') ? slug.split('/')[1] : slug;
+    return slugPart.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  return raw || '';
 }
 
 async function getOngoing(page = 1) {
@@ -35,35 +48,41 @@ async function getOngoing(page = 1) {
     const $ = cheerio.load(html);
     const results = [];
 
-    $('.product__item').each((_, el) => {
-      const $el = $(el);
-      const linkEl = $el.find('h5 a, .product__item__text a').first();
-      const rawTitle = linkEl.text().trim();
-      const href = linkEl.attr('href') || '';
+    $('a[href*="/anime/"]').each((_, a) => {
+      const $a = $(a);
+      const href = $a.attr('href') || '';
+      const rawText = $a.text().trim();
       const slug = extractSlug(href);
 
-      const imgEl = $el.find('.product__item__pic, img').first();
+      const imgEl = $a.find('img, div[data-setbg]').first();
       const poster = imgEl.attr('data-setbg') || imgEl.attr('src') || '';
 
-      const epBadge = $el.find('.ep span, .ep').first().text().trim();
-      const typeBadge = $el.find('.type').first().text().trim() || 'TV';
+      const ratingMatch = rawText.match(/(\d+\.\d+)/);
+      const rating = ratingMatch ? ratingMatch[1] : null;
 
-      if (rawTitle && slug) {
+      const title = cleanTitle(rawText, slug);
+
+      if (title && slug && !slug.includes('/episode/')) {
         results.push({
           id: slug,
-          title: cleanTitle(rawTitle),
+          title,
           slug,
           poster,
-          type: typeBadge,
+          type: 'TV',
           status: 'Ongoing',
-          episodes: epBadge || null,
-          rating: null,
+          episodes: null,
+          rating,
           genres: [],
         });
       }
     });
 
-    return results;
+    const seen = new Set();
+    return results.filter((item) => {
+      if (seen.has(item.slug)) return false;
+      seen.add(item.slug);
+      return true;
+    });
   } catch (err) {
     console.error('[kuramanime] getOngoing error:', err.message);
     return [];
@@ -77,32 +96,41 @@ async function getComplete(page = 1) {
     const $ = cheerio.load(html);
     const results = [];
 
-    $('.product__item').each((_, el) => {
-      const $el = $(el);
-      const linkEl = $el.find('h5 a, .product__item__text a').first();
-      const rawTitle = linkEl.text().trim();
-      const href = linkEl.attr('href') || '';
+    $('a[href*="/anime/"]').each((_, a) => {
+      const $a = $(a);
+      const href = $a.attr('href') || '';
+      const rawText = $a.text().trim();
       const slug = extractSlug(href);
 
-      const imgEl = $el.find('.product__item__pic, img').first();
+      const imgEl = $a.find('img, div[data-setbg]').first();
       const poster = imgEl.attr('data-setbg') || imgEl.attr('src') || '';
 
-      if (rawTitle && slug) {
+      const ratingMatch = rawText.match(/(\d+\.\d+)/);
+      const rating = ratingMatch ? ratingMatch[1] : null;
+
+      const title = cleanTitle(rawText, slug);
+
+      if (title && slug && !slug.includes('/episode/')) {
         results.push({
           id: slug,
-          title: cleanTitle(rawTitle),
+          title,
           slug,
           poster,
           type: 'TV',
           status: 'Completed',
           episodes: null,
-          rating: null,
+          rating,
           genres: [],
         });
       }
     });
 
-    return results;
+    const seen = new Set();
+    return results.filter((item) => {
+      if (seen.has(item.slug)) return false;
+      seen.add(item.slug);
+      return true;
+    });
   } catch (err) {
     console.error('[kuramanime] getComplete error:', err.message);
     return [];
@@ -116,28 +144,33 @@ async function searchAnime(query) {
     const $ = cheerio.load(html);
     const results = [];
 
-    $('.product__item, .product__sidebar__comment__item').each((_, el) => {
-      const $el = $(el);
-      const linkEl = $el.find('h5 a, .product__item__text a, a').first();
-      const rawTitle = linkEl.text().trim();
-      const href = linkEl.attr('href') || '';
+    $('a[href*="/anime/"]').each((_, a) => {
+      const $a = $(a);
+      const href = $a.attr('href') || '';
+      const rawText = $a.text().trim();
       const slug = extractSlug(href);
 
-      const imgEl = $el.find('.product__item__pic, img').first();
+      const imgEl = $a.find('img, div[data-setbg]').first();
       const poster = imgEl.attr('data-setbg') || imgEl.attr('src') || '';
 
-      const rating = $el.find('.view, .rating').text().trim();
+      const ratingMatch = rawText.match(/(\d+\.\d+)/);
+      const rating = ratingMatch ? ratingMatch[1] : null;
 
-      if (rawTitle && slug && !slug.includes('/episode/')) {
+      const isFinished = rawText.includes('SELESAI');
+      const status = isFinished ? 'Completed' : 'Ongoing';
+
+      const title = cleanTitle(rawText, slug);
+
+      if (title && slug && !slug.includes('/episode/') && title.length > 1) {
         results.push({
           id: slug,
-          title: cleanTitle(rawTitle),
+          title,
           slug,
           poster,
           type: 'TV',
-          status: 'Unknown',
+          status,
           episodes: null,
-          rating: rating || null,
+          rating,
           genres: [],
         });
       }
@@ -164,13 +197,13 @@ async function getAnimeDetail(slug) {
     const title = cleanTitle($('.anime__details__title h3, h3').first().text().trim());
     const japanese = $('.anime__details__title span').first().text().trim();
 
-    const imgEl = $('.anime__details__pic, .product__item__pic').first();
-    const poster = imgEl.attr('data-setbg') || imgEl.find('img').attr('src') || '';
+    const imgEl = $('.anime__details__pic, .product__item__pic, img').first();
+    const poster = imgEl.attr('data-setbg') || imgEl.attr('src') || '';
 
-    const synopsis = $('.anime__details__text p').text().trim();
+    const synopsis = $('.anime__details__text p, .sinopsis p').text().trim();
 
     const genres = [];
-    $('.anime__details__widget ul li a[href*="/genres/"]').each((_, a) => {
+    $('.anime__details__widget ul li a[href*="/genres/"], .anime__details__widget a[href*="/properties/genre/"]').each((_, a) => {
       genres.push($(a).text().trim());
     });
 

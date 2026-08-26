@@ -9,7 +9,7 @@ module.exports = {
   sources: {
     kuramanime: {
       name: 'Kuramanime',
-      baseUrl: process.env.KURAMANIME_URL || 'https://kuramanime.ing',
+      baseUrl: process.env.KURAMANIME_URL || 'https://v20.kuramanime.ing',
       enabled: true,
       priority: 1,
     },
