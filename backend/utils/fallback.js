@@ -51,4 +51,32 @@ async function withFallback(sourceOrder, methodName, ...args) {
   throw new Error(`All sources failed for "${methodName}":${detail}`);
 }
 
-module.exports = { withFallback };
+async function withParallelFallback(sourceOrder, methodName, ...args) {
+  const activeSources = sourceOrder.filter((name) => sources[name] && sources[name].enabled);
+
+  const promises = activeSources.map(async (sourceName) => {
+    try {
+      const scraper = require('../scrapers/' + sourceName);
+      if (typeof scraper[methodName] !== 'function') return null;
+      const result = await scraper[methodName](...args);
+      const hasContent = Array.isArray(result)
+        ? result.length > 0
+        : result !== null && result !== undefined && (result.servers ? result.servers.length > 0 : true);
+      if (hasContent) {
+        return { data: result, source: sourceName };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  });
+
+  const results = await Promise.all(promises);
+  for (const res of results) {
+    if (res) return res;
+  }
+
+  throw new Error(`All sources failed for "${methodName}"`);
+}
+
+module.exports = { withFallback, withParallelFallback };

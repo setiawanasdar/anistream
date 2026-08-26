@@ -15,7 +15,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { withFallback } = require('../utils/fallback');
+const { withFallback, withParallelFallback } = require('../utils/fallback');
 const { cacheMiddleware } = require('../middleware/cache');
 const { fallbackOrder } = require('../config/sources');
 const { resolveAnilistId } = require('../scrapers/anilist');
@@ -57,9 +57,9 @@ router.get('/:slug', async (req, res, next) => {
     const epNum = extractEpisodeNumber(cleanSlug);
     const animeName = extractAnimeName(cleanSlug);
 
-    // Run scraper with 4s fast timeout and AniList resolution concurrently
+    // Run scrapers in parallel with 4s fast timeout and AniList resolution concurrently
     const scraperPromise = Promise.race([
-      withFallback(fallbackOrder, 'getEpisode', slug),
+      withParallelFallback(fallbackOrder, 'getEpisode', slug),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Scraper timeout')), 4000)),
     ]).catch(() => null);
 
