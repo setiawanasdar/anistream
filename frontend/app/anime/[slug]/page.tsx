@@ -94,7 +94,7 @@ export default function AnimeDetailPage() {
     : synopsis;
 
   // Support all casing / naming conventions for episode list
-  const rawEpisodes: any[] = (anime as any).episodes_list || (anime as any).episodeList || (anime as any).episodes || [];
+  const rawEpisodes = (anime as any).episodes_list || (anime as any).episodeList;
   let episodes: Episode[] = Array.isArray(rawEpisodes) && rawEpisodes.length > 0
     ? rawEpisodes.map((ep, idx) => {
         if (typeof ep === 'string') {
@@ -102,18 +102,18 @@ export default function AnimeDetailPage() {
         }
         return {
           slug: ep.slug || String(ep.id || idx + 1),
-          title: ep.title || `Episode ${ep.episode_number || idx + 1}`,
-          episode_number: String(ep.episode_number || idx + 1),
+          title: ep.title || `Episode ${ep.episode_number || ep.episode || idx + 1}`,
+          episode_number: String(ep.episode_number || ep.episode || idx + 1),
         };
       })
     : [];
 
-  // If episodes array is still empty but total episode count is known (e.g. completed series like Steins;Gate)
+  // If episodes array is still empty but total episode count is known (e.g. Naruto, Bleach, Steins;Gate)
   if (episodes.length === 0 && anime.episodes) {
     const countMatch = String(anime.episodes).match(/\d+/);
-    const totalCount = countMatch ? Math.min(parseInt(countMatch[0], 10), 100) : 0;
+    const totalCount = countMatch ? Math.min(parseInt(countMatch[0], 10), 2000) : 0;
     if (totalCount > 0) {
-      const baseSlug = slug.replace(/-sub-indo$/i, '');
+      const baseSlug = (anime.slug || slug).replace(/-sub-indo$/i, '');
       for (let i = 1; i <= totalCount; i++) {
         episodes.push({
           slug: `${baseSlug}-episode-${i}-sub-indo`,

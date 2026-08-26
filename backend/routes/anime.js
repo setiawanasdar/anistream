@@ -160,30 +160,37 @@ router.get('/:slug', async (req, res, next) => {
   const { slug } = req.params;
 
   try {
-    // First try all scrapers (Otakudesu, etc.)
+    // First try all scrapers (Otakudesu, etc.) with strict validity checks
     try {
       const { data, source } = await withFallback(fallbackOrder, 'getAnimeDetail', slug);
-      if (data) {
-        return res.json({ success: true, source, data });
+      if (
+        data &&
+        data.title &&
+        data.poster &&
+        Array.isArray(data.episodes_list) &&
+        data.episodes_list.length > 0
+      ) {
+        const titleLower = data.title.toLowerCase();
+        if (!titleLower.includes('gcms') && !titleLower.includes('request anime')) {
+          return res.json({ success: true, source, data });
+        }
       }
     } catch {
       // Scraper failed, fall through to AniList
     }
 
     // AniList fallback: resolve slug to AniList detail
-    // slug could be: "steins-gate" (romaji slug from AniList search results)
-    //                or an AniList numeric ID
     try {
       let anilistData = null;
 
       // Try numeric ID first
       if (/^\d+$/.test(slug)) {
-        anilistData = await anilist.getById(parseInt(slug));
+        anilistData = await anilist.getById(parseInt(slug, 10));
       }
 
       // Try search by slug (convert slug back to search query)
       if (!anilistData) {
-        const searchQuery = slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const searchQuery = slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
         const results = await anilist.searchAnime(searchQuery, 1, 5);
         if (results.length > 0) {
           anilistData = results[0];
@@ -192,18 +199,17 @@ router.get('/:slug', async (req, res, next) => {
 
       if (anilistData) {
         // Build episode list from AniList episode count
-        const epCount = parseInt(anilistData.episodes || '0', 10);
+        const epCount = parseInt(anilistData.episodes || '1', 10) || 1;
         const episodes = [];
-        if (epCount > 0) {
-          for (let i = 1; i <= epCount; i++) {
-            const epSlug = `${anilistData.slug}-episode-${i}-sub-indo`;
-            episodes.push({
-              id: epSlug,
-              title: `Episode ${i}`,
-              slug: epSlug,
-              episode: String(i),
-            });
-          }
+        for (let i = 1; i <= epCount; i++) {
+          const epSlug = `${anilistData.slug}-episode-${i}-sub-indo`;
+          episodes.push({
+            id: epSlug,
+            title: `Episode ${i}`,
+            slug: epSlug,
+            episode: String(i),
+            episode_number: String(i),
+          });
         }
 
         return res.json({
@@ -211,8 +217,9 @@ router.get('/:slug', async (req, res, next) => {
           source: 'anilist',
           data: {
             ...anilistData,
+            episodes: String(epCount),
             episodes_list: episodes,
-            total_episodes: anilistData.episodes || null,
+            total_episodes: String(epCount),
           },
         });
       }

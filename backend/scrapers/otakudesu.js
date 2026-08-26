@@ -413,16 +413,7 @@ async function getAnimeDetail(slug) {
       }
     }
 
-    // If still empty or no details, search Otakudesu for the slug keywords
-    if (!html || (!html.includes('infozin') && !html.includes('episodelist') && !html.includes('monk'))) {
-      const searchKeywords = cleanSlug.replace(/-sub-indo$/i, '').replace(/-/g, ' ');
-      const searchRes = await searchAnime(searchKeywords);
-      if (searchRes.length > 0 && searchRes[0].slug !== cleanSlug) {
-        return getAnimeDetail(searchRes[0].slug);
-      }
-    }
-
-    if (!html) {
+    if (!html || (!html.includes('infozin') && !html.includes('episodelist') && !html.includes('fotoanime'))) {
       throw new Error(`Failed to fetch anime detail for slug: ${slug}`);
     }
 
