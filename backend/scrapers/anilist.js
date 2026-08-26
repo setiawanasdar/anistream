@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 /**
  * AniList GraphQL API Client
@@ -265,7 +265,48 @@ async function getCurrentSeason(page = 1, perPage = 20) {
   }
 }
 
-// Expose getOngoing as alias for getCurrentSeason (for fallback compatibility)
+/**
+ * Get alternate / Romaji / English titles and synonyms for a search query.
+ * Useful for bridging English names (e.g. "Demon Slayer") to Japanese/Romaji (e.g. "Kimetsu no Yaiba").
+ * @param {string} query
+ */
+async function getAlternateTitles(query) {
+  try {
+    const gql = `
+      query ($search: String) {
+        Page(page: 1, perPage: 4) {
+          media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
+            title {
+              romaji
+              english
+              native
+            }
+            synonyms
+          }
+        }
+      }
+    `;
+    const data = await gqlQuery(gql, { search: query });
+    const titles = new Set();
+    const mediaList = data?.Page?.media || [];
+    mediaList.forEach((m) => {
+      if (m.title?.romaji) titles.add(m.title.romaji);
+      if (m.title?.english) titles.add(m.title.english);
+      if (Array.isArray(m.synonyms)) {
+        m.synonyms.forEach((s) => {
+          // Add clean short title (exclude extra notes)
+          const clean = s.split(/[:\-(]/)[0].trim();
+          if (clean && clean.length > 2) titles.add(clean);
+          titles.add(s);
+        });
+      }
+    });
+    return Array.from(titles);
+  } catch {
+    return [];
+  }
+}
+
 async function getOngoing() {
   return getTrending();
 }
@@ -277,4 +318,5 @@ module.exports = {
   getById,
   getCurrentSeason,
   getOngoing,
+  getAlternateTitles,
 };

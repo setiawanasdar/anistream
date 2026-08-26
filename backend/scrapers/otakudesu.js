@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Otakudesu Scraper (Separated Stream Players & Download Mirrors)
+ * Otakudesu Scraper (with Multi-Language Search & Smart Fallbacks)
  * Base domain: https://otakudesu.cloud (configurable via OTAKUDESU_URL env var)
  */
 
@@ -22,6 +22,12 @@ function extractSlug(url = '') {
   const animeMatch = url.match(/\/anime\/([^/]+)\/?$/);
   if (animeMatch) return animeMatch[1];
 
+  const lengkapMatch = url.match(/\/lengkap\/([^/]+)\/?$/);
+  if (lengkapMatch) return lengkapMatch[1];
+
+  const batchMatch = url.match(/\/batch\/([^/]+)\/?$/);
+  if (batchMatch) return batchMatch[1];
+
   const epMatch = url.match(/\/episode\/([^/]+)\/?$/);
   if (epMatch) {
     return epMatch[1].replace(/-episode-\d+.*$/i, '-sub-indo').replace(/-sub-indo-.*$/i, '-sub-indo');
@@ -33,8 +39,15 @@ function extractSlug(url = '') {
 
 function extractEpisodeSlug(url = '') {
   if (!url) return '';
-  const match = url.match(/\/episode\/([^/]+)\/?$/);
-  if (match) return match[1];
+  const epMatch = url.match(/\/episode\/([^/]+)\/?$/);
+  if (epMatch) return epMatch[1];
+
+  const lengkapMatch = url.match(/\/lengkap\/([^/]+)\/?$/);
+  if (lengkapMatch) return lengkapMatch[1];
+
+  const batchMatch = url.match(/\/batch\/([^/]+)\/?$/);
+  if (batchMatch) return batchMatch[1];
+
   return url.replace(/^https?:\/\/[^/]+\//, '').replace(/\/$/, '');
 }
 
@@ -183,9 +196,12 @@ async function getPopular() {
   }
 }
 
-async function searchAnime(query) {
+/**
+ * Single raw search query to Otakudesu.
+ */
+async function searchSingle(q) {
   try {
-    const url = `${getBaseUrl()}/?s=${encodeURIComponent(query)}&post_type=anime`;
+    const url = `${getBaseUrl()}/?s=${encodeURIComponent(q)}&post_type=anime`;
     const html = await fetchHtml(url);
     const $ = cheerio.load(html);
     const results = [];
@@ -225,6 +241,45 @@ async function searchAnime(query) {
     });
 
     return results;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Search anime with Multi-Language / Synonym bridging.
+ * (e.g. typing "Demon Slayer" automatically searches "Kimetsu no Yaiba").
+ */
+async function searchAnime(query) {
+  try {
+    let results = await searchSingle(query);
+
+    // If query returned few results or might be an English title,
+    // look up alternate / Romaji titles from AniList
+    try {
+      const anilist = require('./anilist');
+      const altTitles = await anilist.getAlternateTitles(query);
+      const filteredAlts = altTitles
+        .filter((t) => /^[a-zA-Z0-9\s:;,'\-_]+$/.test(t) && t.toLowerCase() !== query.toLowerCase())
+        .slice(0, 3);
+
+      for (const alt of filteredAlts) {
+        const altResults = await searchSingle(alt);
+        if (altResults.length > 0) {
+          results.push(...altResults);
+        }
+      }
+    } catch {
+      // continue with whatever results we have
+    }
+
+    // Deduplicate by slug
+    const seen = new Set();
+    return results.filter((item) => {
+      if (seen.has(item.slug)) return false;
+      seen.add(item.slug);
+      return true;
+    });
   } catch (err) {
     console.error('[otakudesu] searchAnime error:', err.message);
     return [];
@@ -232,26 +287,38 @@ async function searchAnime(query) {
 }
 
 /**
- * Get full anime detail page.
+ * Get full anime detail page with resilient fallback URLs and completed/batch support.
  */
 async function getAnimeDetail(slug) {
   try {
-    const cleanSlug = slug.replace(/^https?:\/\/[^/]+\/anime\//, '').replace(/\/$/, '');
+    const cleanSlug = slug.replace(/^https?:\/\/[^/]+\/(anime|lengkap|batch)\//, '').replace(/\/$/, '');
     const tryUrls = [
       `${getBaseUrl()}/anime/${cleanSlug}/`,
       `${getBaseUrl()}/anime/${cleanSlug.replace(/-sub-indo$/i, '')}-sub-indo/`,
       `${getBaseUrl()}/anime/${cleanSlug.replace(/-sub-indo$/i, '')}/`,
+      `${getBaseUrl()}/lengkap/${cleanSlug}/`,
+      `${getBaseUrl()}/lengkap/${cleanSlug.replace(/-sub-indo$/i, '')}-sub-indo/`,
+      `${getBaseUrl()}/batch/${cleanSlug}/`,
     ];
 
     let html = '';
     for (const url of tryUrls) {
       try {
         html = await fetchHtml(url, { referer: getBaseUrl() });
-        if (html && (html.includes('infozin') || html.includes('fotoanime') || html.includes('episodelist'))) {
+        if (html && (html.includes('infozin') || html.includes('fotoanime') || html.includes('episodelist') || html.includes('monk'))) {
           break;
         }
       } catch {
         // try next
+      }
+    }
+
+    // If still empty or no episode info found, do an automatic search with slug keywords
+    if (!html || (!html.includes('infozin') && !html.includes('episodelist') && !html.includes('monk'))) {
+      const searchKeywords = cleanSlug.replace(/-sub-indo$/i, '').replace(/-/g, ' ');
+      const searchRes = await searchAnime(searchKeywords);
+      if (searchRes.length > 0 && searchRes[0].slug !== cleanSlug) {
+        return getAnimeDetail(searchRes[0].slug);
       }
     }
 
@@ -315,11 +382,11 @@ async function getAnimeDetail(slug) {
       ? genreRaw.split(',').map((g) => g.trim()).filter(Boolean)
       : [];
 
-    // Episode list: parse from all episode wrappers
+    // Episode list: parse from ALL episode wrappers (.episodelist, #_epslist, .monk, .barisul)
     const episodeList = [];
     const seenEp = new Set();
 
-    $('.episodelist ul li, #_epslist ul li, .venser .episodelist ul li, .episodelist li').each((idx, el) => {
+    $('.episodelist ul li, #_epslist ul li, .venser .episodelist ul li, .monk ul li, .barisul li, .episodelist li').each((idx, el) => {
       const $el = $(el);
       const a = $el.find('a');
       const epTitle = a.text().trim();
@@ -327,9 +394,9 @@ async function getAnimeDetail(slug) {
       const epSlug = extractEpisodeSlug(epHref);
       const epDate = $el.find('.zeebr').text().trim();
 
-      if (epTitle && epSlug && epHref.includes('/episode/') && !seenEp.has(epSlug)) {
+      if (epTitle && epSlug && (epHref.includes('/episode/') || epHref.includes('/lengkap/') || epHref.includes('/batch/') || epHref.includes('/anime/')) && !seenEp.has(epSlug)) {
         seenEp.add(epSlug);
-        const numMatch = epTitle.match(/Episode\s*(\d+(\.\d+)?)/i) || epSlug.match(/episode-(\d+)/i);
+        const numMatch = epTitle.match(/Episode\s*(\d+(\.\d+)?)/i) || epSlug.match(/episode-(\d+)/i) || epTitle.match(/(\d+)/);
         const episode_number = numMatch ? numMatch[1] : `${idx + 1}`;
 
         episodeList.push({
@@ -340,6 +407,24 @@ async function getAnimeDetail(slug) {
         });
       }
     });
+
+    // Fallback: If no individual episodes found, check all links in episode blocks
+    if (episodeList.length === 0) {
+      $('.episodelist a, .batchlink a, .monk a').each((idx, a) => {
+        const epTitle = $(a).text().trim();
+        const epHref = $(a).attr('href') || '';
+        const epSlug = extractEpisodeSlug(epHref);
+        if (epTitle && epSlug && !seenEp.has(epSlug)) {
+          seenEp.add(epSlug);
+          episodeList.push({
+            title: epTitle,
+            slug: epSlug,
+            episode_number: `${idx + 1}`,
+            date: '',
+          });
+        }
+      });
+    }
 
     // Batch download links
     const batchLinks = [];
@@ -382,17 +467,11 @@ const STREAM_PLAYERS_WHITELIST = [
   'streamsb', 'sbplay', 'sendvid', 'streamwish', 'hxfile', 'player', 'embed',
 ];
 
-/**
- * Check if a host/URL is a valid embeddable streaming player.
- */
 function isStreamPlayerHost(hostOrUrl = '') {
   const lower = hostOrUrl.toLowerCase();
   return STREAM_PLAYERS_WHITELIST.some((provider) => lower.includes(provider));
 }
 
-/**
- * Helper to decode mirror data-content payload or extract stream URL.
- */
 function decodeStreamPayload(raw) {
   if (!raw) return '';
   try {
@@ -412,14 +491,33 @@ function decodeStreamPayload(raw) {
 }
 
 /**
- * Get episode streaming data with Multi-Quality support (360p, 480p, 720p, 1080p).
- * Strict separation: Genuine Video Players in `servers`, File Downloads in `downloads`.
+ * Get episode streaming data with Multi-Quality support.
  */
 async function getEpisode(slug) {
   try {
-    const cleanSlug = slug.replace(/^https?:\/\/[^/]+\/episode\//, '').replace(/\/$/, '');
-    const url = `${getBaseUrl()}/episode/${cleanSlug}/`;
-    const html = await fetchHtml(url, { referer: getBaseUrl() });
+    const cleanSlug = slug.replace(/^https?:\/\/[^/]+\/(episode|lengkap|batch)\//, '').replace(/\/$/, '');
+    const tryUrls = [
+      `${getBaseUrl()}/episode/${cleanSlug}/`,
+      `${getBaseUrl()}/lengkap/${cleanSlug}/`,
+      `${getBaseUrl()}/batch/${cleanSlug}/`,
+    ];
+
+    let html = '';
+    for (const url of tryUrls) {
+      try {
+        html = await fetchHtml(url, { referer: getBaseUrl() });
+        if (html && (html.includes('mirrorstream') || html.includes('embed_holder') || html.includes('download'))) {
+          break;
+        }
+      } catch {
+        // try next
+      }
+    }
+
+    if (!html) {
+      throw new Error(`Episode page not found for slug: ${slug}`);
+    }
+
     const $ = cheerio.load(html);
 
     // Episode title
@@ -450,7 +548,7 @@ async function getEpisode(slug) {
     // ---------------------------------------------------------------------------
     // 1. Streaming Players (Video Player Only)
     // ---------------------------------------------------------------------------
-    const serverMap = new Map(); // serverName -> Map(quality -> url)
+    const serverMap = new Map();
 
     const addStream = (serverName, quality, streamUrl) => {
       if (!serverName || !streamUrl || !streamUrl.startsWith('http')) return;
@@ -509,8 +607,7 @@ async function getEpisode(slug) {
         if (href && host) {
           links.push({ host, url: href });
 
-          // ONLY add to streaming players if it is a genuine video embed provider (e.g. DesuStream, OtakuFiles, Filemoon, Streamtape)
-          // DO NOT add Mega, Acefile, Mediafire, Google Drive to video player!
+          // ONLY add to streaming players if it is a genuine video embed provider
           if (isStreamPlayerHost(host) || isStreamPlayerHost(href)) {
             addStream(host, qualityText, href);
           }
@@ -565,7 +662,7 @@ async function getEpisode(slug) {
 }
 
 /**
- * Get weekly release schedule (Properly parsed by Day block).
+ * Get weekly release schedule.
  */
 async function getSchedule() {
   try {
@@ -588,7 +685,6 @@ async function getSchedule() {
     const schedule = [];
     const validDays = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
 
-    // Method 1: Target .kg-items / .kgjdwl items
     $('.kg-items, .kgjdwl .kg-items, .schedule-item').each((_, block) => {
       const $b = $(block);
       const rawDay = $b.find('h2, .kgtitle').first().text().trim().toLowerCase();
@@ -609,7 +705,6 @@ async function getSchedule() {
       }
     });
 
-    // Method 2: Fallback - look for h2 headers followed by ul in .venser / .venutama
     if (schedule.length === 0) {
       $('.venser h2, .venutama h2, #venkonten h2').each((_, h2) => {
         const rawDay = $(h2).text().trim().toLowerCase();
@@ -635,14 +730,13 @@ async function getSchedule() {
       });
     }
 
-    // Method 3: Fallback from ongoing anime if schedule page has different markup
     if (schedule.length === 0) {
       const ongoing = await getOngoing();
       const grouped = {};
       validDays.forEach((d) => (grouped[d] = []));
 
       ongoing.forEach((anime) => {
-        const day = anime.episodes?.includes('Hari') ? 'Senin' : 'Senin';
+        const day = 'Senin';
         grouped[day].push({
           title: anime.title,
           slug: anime.slug,
