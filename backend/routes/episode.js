@@ -57,10 +57,10 @@ router.get('/:slug', async (req, res, next) => {
     const epNum = extractEpisodeNumber(cleanSlug);
     const animeName = extractAnimeName(cleanSlug);
 
-    // Run scraper with 8s timeout and AniList resolution concurrently
+    // Run scraper with 4s fast timeout and AniList resolution concurrently
     const scraperPromise = Promise.race([
       withFallback(fallbackOrder, 'getEpisode', slug),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Scraper timeout')), 8000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Scraper timeout')), 4000)),
     ]).catch(() => null);
 
     const [scraperResult, anilistResult] = await Promise.allSettled([

@@ -25,44 +25,36 @@ const cache = new NodeCache({ stdTTL: 0, checkperiod: 120, useClones: false });
  * The first path segment after /api/ is used as the category key.
  * @param {string} path - e.g. '/api/anime/ongoing'
  */
-function resolveTTL(path) {
-  // Normalise: remove leading slash, split
-  const parts = path.replace(/^\/+/, '').split('/');
-  // parts[0] = 'api', parts[1] = 'anime'|'episode'|'schedule'|'genres'|'genre'
-  // parts[2] might be 'ongoing'|'complete'|'popular'|'search'|slug
-  const segment2 = parts[1] || '';
-  const segment3 = parts[2] || '';
-
-  if (segment2 === 'schedule') return TTL.schedule;
-  if (segment2 === 'genres')   return TTL.genres;
-  if (segment2 === 'genre')    return TTL.genre;
-  if (segment2 === 'episode')  return TTL.episode;
-  if (segment3 === 'ongoing')  return TTL.ongoing;
-  if (segment3 === 'complete') return TTL.complete;
-  if (segment3 === 'popular')  return TTL.popular;
-  if (segment3 === 'search')   return TTL.search;
-  // Default for anime detail pages
+function resolveTTL(path = '') {
+  if (path.includes('/schedule')) return TTL.schedule;
+  if (path.includes('/genres'))   return TTL.genres;
+  if (path.includes('/genre/'))   return TTL.genre;
+  if (path.includes('/episode/')) return TTL.episode;
+  if (path.includes('/ongoing'))  return TTL.ongoing;
+  if (path.includes('/complete')) return TTL.complete;
+  if (path.includes('/popular'))  return TTL.popular;
+  if (path.includes('/search'))   return TTL.search;
   return TTL.detail;
 }
 
 /**
  * Express middleware that caches successful JSON responses.
- * Cache key = request path + serialised query string.
+ * Cache key = full original request URL (e.g. /api/anime/naruto, /api/episode/...).
  */
 function cacheMiddleware(req, res, next) {
-  const key = req.path + (Object.keys(req.query).length ? ':' + JSON.stringify(req.query) : '');
+  const key = req.originalUrl || req.url || req.path;
   const cached = cache.get(key);
 
   if (cached !== undefined) {
+    res.setHeader('X-Cache', 'HIT');
     return res.json({ ...cached, cached: true });
   }
 
-  // Intercept res.json to store the response before sending
+  res.setHeader('X-Cache', 'MISS');
   const originalJson = res.json.bind(res);
   res.json = (body) => {
-    // Only cache successful responses
     if (body && body.success === true) {
-      const ttl = resolveTTL(req.path);
+      const ttl = resolveTTL(key);
       cache.set(key, body, ttl);
     }
     return originalJson(body);

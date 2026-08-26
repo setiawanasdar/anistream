@@ -160,11 +160,25 @@ router.get('/:slug', async (req, res, next) => {
   const { slug } = req.params;
 
   try {
-    // First try all scrapers (Otakudesu, etc.) with strict validity checks
-    try {
-      const { data, source } = await withFallback(fallbackOrder, 'getAnimeDetail', slug);
+    // Run Indonesian scraper fallback and AniList resolution concurrently for blazing speed
+    const scraperPromise = withFallback(fallbackOrder, 'getAnimeDetail', slug).catch(() => null);
+    const anilistPromise = (async () => {
+      try {
+        if (/^\d+$/.test(slug)) return await anilist.getById(parseInt(slug, 10));
+        const searchQuery = slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+        const results = await anilist.searchAnime(searchQuery, 1, 3);
+        return results && results[0] ? results[0] : null;
+      } catch {
+        return null;
+      }
+    })();
+
+    const [scraperRes, anilistData] = await Promise.all([scraperPromise, anilistPromise]);
+
+    // 1. If Indonesian scraper returned valid rich data, use it
+    if (scraperRes && scraperRes.data) {
+      const data = scraperRes.data;
       if (
-        data &&
         data.title &&
         data.poster &&
         Array.isArray(data.episodes_list) &&
@@ -172,59 +186,36 @@ router.get('/:slug', async (req, res, next) => {
       ) {
         const titleLower = data.title.toLowerCase();
         if (!titleLower.includes('gcms') && !titleLower.includes('request anime')) {
-          return res.json({ success: true, source, data });
+          return res.json({ success: true, source: scraperRes.source, data });
         }
       }
-    } catch {
-      // Scraper failed, fall through to AniList
     }
 
-    // AniList fallback: resolve slug to AniList detail
-    try {
-      let anilistData = null;
-
-      // Try numeric ID first
-      if (/^\d+$/.test(slug)) {
-        anilistData = await anilist.getById(parseInt(slug, 10));
-      }
-
-      // Try search by slug (convert slug back to search query)
-      if (!anilistData) {
-        const searchQuery = slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-        const results = await anilist.searchAnime(searchQuery, 1, 5);
-        if (results.length > 0) {
-          anilistData = results[0];
-        }
-      }
-
-      if (anilistData) {
-        // Build episode list from AniList episode count
-        const epCount = parseInt(anilistData.episodes || '1', 10) || 1;
-        const episodes = [];
-        for (let i = 1; i <= epCount; i++) {
-          const epSlug = `${anilistData.slug}-episode-${i}-sub-indo`;
-          episodes.push({
-            id: epSlug,
-            title: `Episode ${i}`,
-            slug: epSlug,
-            episode: String(i),
-            episode_number: String(i),
-          });
-        }
-
-        return res.json({
-          success: true,
-          source: 'anilist',
-          data: {
-            ...anilistData,
-            episodes: String(epCount),
-            episodes_list: episodes,
-            total_episodes: String(epCount),
-          },
+    // 2. Fallback to AniList metadata with generated full episode list
+    if (anilistData) {
+      const epCount = parseInt(anilistData.episodes || '1', 10) || 1;
+      const episodes = [];
+      for (let i = 1; i <= epCount; i++) {
+        const epSlug = `${anilistData.slug}-episode-${i}-sub-indo`;
+        episodes.push({
+          id: epSlug,
+          title: `Episode ${i}`,
+          slug: epSlug,
+          episode: String(i),
+          episode_number: String(i),
         });
       }
-    } catch (aniErr) {
-      console.error('[routes/anime] AniList detail fallback error:', aniErr.message);
+
+      return res.json({
+        success: true,
+        source: 'anilist',
+        data: {
+          ...anilistData,
+          episodes: String(epCount),
+          episodes_list: episodes,
+          total_episodes: String(epCount),
+        },
+      });
     }
 
     return res.status(404).json({ success: false, error: 'Anime not found' });

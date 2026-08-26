@@ -81,11 +81,11 @@ function randomJitter(minMs = 1000, maxMs = 3000) {
 async function fetchUrl(url, options = {}) {
   const {
     referer = '',
-    timeout = 10000,
-    retries = 3,
+    timeout = 4000,
+    retries = 1,
     method = 'get',
     data = null,
-    responseType = 'text', // 'text' | 'arraybuffer' | 'json'
+    responseType = 'text',
   } = options;
 
   let lastError;
@@ -100,24 +100,21 @@ async function fetchUrl(url, options = {}) {
         responseType,
         headers: buildHeaders(referer),
         maxRedirects: 5,
-        validateStatus: (status) => status < 500,
+        validateStatus: (status) => status === 200,
       });
 
-      if (response.status === 200) {
-        return response;
-      }
-
-      // Treat non-200 as a soft failure worth retrying
-      throw new Error(`HTTP ${response.status} for ${url}`);
+      return response;
     } catch (err) {
       lastError = err;
+      const status = err.response?.status;
+
+      // Do NOT retry 404, 403, 400 client errors (they will never succeed)
+      if (status && status >= 400 && status < 500) {
+        throw new Error(`HTTP ${status} for ${url}`);
+      }
+
       if (attempt < retries) {
-        // Exponential backoff: 500ms, 1000ms, 2000ms …
-        const delay = 500 * Math.pow(2, attempt - 1);
-        console.warn(
-          `[fetcher] Attempt ${attempt}/${retries} failed for ${url}: ${err.message} – retrying in ${delay}ms`
-        );
-        await sleep(delay);
+        await sleep(300);
       }
     }
   }

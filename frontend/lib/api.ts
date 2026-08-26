@@ -71,13 +71,26 @@ export interface ApiResponse<T> {
   data: T;
 }
 
+// Fast in-memory client-side cache (5-minute TTL)
+const clientCache = new Map<string, { data: any; exp: number }>();
+
 async function fetchApi<T>(url: string, options?: RequestInit): Promise<ApiResponse<T>> {
-  const res = await fetch(url, {
-    cache: 'no-store',
-    ...options,
-  });
+  const now = Date.now();
+  const cached = clientCache.get(url);
+  if (cached && cached.exp > now) {
+    return cached.data;
+  }
+
+  const res = await fetch(url, options);
   if (!res.ok) throw new Error(`API error: ${res.status} - ${url}`);
-  return res.json();
+  const json = await res.json();
+
+  if (json && json.success) {
+    // Cache for 5 minutes in browser memory
+    clientCache.set(url, { data: json, exp: now + 5 * 60 * 1000 });
+  }
+
+  return json;
 }
 
 export const api = {
