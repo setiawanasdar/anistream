@@ -30,6 +30,12 @@ const EMBED_SAFE_HOSTS = [
   'streamwish.to',
   'streamwish.com',
   'blogger.com',
+  'google.com',
+  // Universal HD Anime players
+  '2embed.skin',
+  '2embed.cc',
+  '2embed.org',
+  '2embed.me',
   'vidsrc.me',
   'vidsrc.pm',
   'vidsrc.in',

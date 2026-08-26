@@ -189,27 +189,68 @@ async function getAnimeDetail(slug) {
 
 async function getEpisode(slug) {
   try {
-    const url = `${getBaseUrl()}/${slug}`;
-    const html = await fetchHtml(url);
-    const $ = cheerio.load(html);
+    const cleanSlug = slug.replace(/^https?:\/\/[^/]+\//, '').replace(/\/$/, '');
+    const numMatch = cleanSlug.match(/episode-(\d+)/i);
+    const epNum = numMatch ? numMatch[1] : '1';
 
-    const title = $('h1.entry-title').text().trim();
+    const trySlugs = [
+      cleanSlug,
+      cleanSlug.replace(/-sub-indo$/i, ''),
+      cleanSlug.replace(/-episode-(\d+).*/i, `-episode-${epNum.padStart(3, '0')}`),
+      cleanSlug.replace(/-episode-(\d+).*/i, `-episode-${epNum.padStart(2, '0')}`),
+      cleanSlug.replace(/-episode-(\d+).*/i, `-episode-${parseInt(epNum, 10)}`),
+    ];
+
+    const uniqueSlugs = [...new Set(trySlugs)];
+    let html = '';
+    let foundSlug = cleanSlug;
+
+    for (const s of uniqueSlugs) {
+      try {
+        const url = `${getBaseUrl()}/${s}`;
+        const res = await fetchHtml(url);
+        if (res && (res.includes('entry-title') || res.includes('iframe') || res.includes('player'))) {
+          html = res;
+          foundSlug = s;
+          break;
+        }
+      } catch {
+        // try next variant
+      }
+    }
+
+    if (!html) {
+      throw new Error(`Episode page not found on Oploverz for: ${slug}`);
+    }
+
+    const $ = cheerio.load(html);
+    const title = $('h1.entry-title').text().trim() || `${cleanSlug.replace(/-/g, ' ')}`;
     const servers = [];
+
     $('iframe[src]').each((_, ifr) => {
       const src = $(ifr).attr('src');
-      if (src && src.startsWith('http')) {
+      if (
+        src &&
+        src.startsWith('http') &&
+        !src.includes('googleads') &&
+        !src.includes('doubleclick') &&
+        !src.includes('facebook')
+      ) {
         servers.push({
-          server: 'Server Oploverz HD',
-          streams: [{ quality: 'HD', url: src }],
+          server: 'Sub Indo - Oploverz HD',
+          streams: [
+            { quality: '720p', url: src },
+            { quality: 'HD', url: src },
+          ],
         });
       }
     });
 
     return {
       title,
-      slug,
+      slug: foundSlug,
       anime: title.replace(/Episode\s*\d+.*/i, '').trim(),
-      animeSlug: slug.replace(/-episode-\d+.*/, ''),
+      animeSlug: foundSlug.replace(/-episode-\d+.*/, ''),
       servers,
       downloads: [],
     };

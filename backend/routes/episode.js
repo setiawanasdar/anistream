@@ -119,18 +119,18 @@ router.get('/:slug', async (req, res, next) => {
       servers.push({
         server: '▶ Server HD 1 (Multi-Quality)',
         streams: [
-          { quality: '1080p', url: `https://vidsrc.me/embed/anime?anilist=${aniId}&episode=${epNum}` },
-          { quality: '720p', url: `https://vidsrc.me/embed/anime?anilist=${aniId}&episode=${epNum}` },
-          { quality: 'HD', url: `https://vidsrc.me/embed/anime?anilist=${aniId}&episode=${epNum}` },
+          { quality: '1080p', url: `https://2embed.skin/embed/anime?id=${aniId}&ep=${epNum}` },
+          { quality: '720p', url: `https://2embed.skin/embed/anime?id=${aniId}&ep=${epNum}` },
+          { quality: 'HD', url: `https://2embed.skin/embed/anime?id=${aniId}&ep=${epNum}` },
         ],
       });
 
       servers.push({
         server: '▶ Server HD 2 (Backup)',
         streams: [
-          { quality: '1080p', url: `https://vidsrc.pm/embed/anime?anilist=${aniId}&episode=${epNum}` },
-          { quality: '720p', url: `https://vidsrc.pm/embed/anime?anilist=${aniId}&episode=${epNum}` },
-          { quality: 'HD', url: `https://vidsrc.pm/embed/anime?anilist=${aniId}&episode=${epNum}` },
+          { quality: '1080p', url: `https://2embed.cc/embed/anime?id=${aniId}&ep=${epNum}` },
+          { quality: '720p', url: `https://2embed.cc/embed/anime?id=${aniId}&ep=${epNum}` },
+          { quality: 'HD', url: `https://2embed.cc/embed/anime?id=${aniId}&ep=${epNum}` },
         ],
       });
     }
@@ -142,7 +142,7 @@ router.get('/:slug', async (req, res, next) => {
         servers.push({
           server: '▶ Server HD 1',
           streams: [
-            { quality: 'HD', url: `https://vidsrc.me/embed/anime?anilist=${altId}&episode=${epNum}` },
+            { quality: 'HD', url: `https://2embed.skin/embed/anime?id=${altId}&ep=${epNum}` },
           ],
         });
       }
