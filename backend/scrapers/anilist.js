@@ -274,12 +274,20 @@ async function resolveAnilistId(titleQuery) {
               fullTitle.includes(`part ${sNum}`)
             );
           });
-          if (matchSeason) return matchSeason.id;
+          if (matchSeason) {
+            return {
+              anilistId: matchSeason.id,
+              malId: matchSeason.idMal || matchSeason.id,
+            };
+          }
         }
 
         // Otherwise prefer TV format, then first match
         const tvAnime = mediaList.find((m) => m.format === 'TV') || mediaList[0];
-        return tvAnime.id;
+        return {
+          anilistId: tvAnime.id,
+          malId: tvAnime.idMal || tvAnime.id,
+        };
       }
     } catch {
       // try next candidate query

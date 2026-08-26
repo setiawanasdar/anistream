@@ -69,12 +69,15 @@ router.get('/:slug', async (req, res, next) => {
     ]);
 
     const scraperData = scraperResult.status === 'fulfilled' && scraperResult.value ? scraperResult.value.data : null;
-    let aniId = anilistResult.status === 'fulfilled' ? anilistResult.value : null;
+    let aniInfo = anilistResult.status === 'fulfilled' ? anilistResult.value : null;
 
     // If ID not resolved from slug, try scraperData.anime if available
-    if (!aniId && scraperData && scraperData.anime) {
-      aniId = await resolveAnilistId(scraperData.anime).catch(() => null);
+    if (!aniInfo && scraperData && scraperData.anime) {
+      aniInfo = await resolveAnilistId(scraperData.anime).catch(() => null);
     }
+
+    const malId = (typeof aniInfo === 'object' && aniInfo?.malId) || (typeof aniInfo === 'number' ? aniInfo : aniInfo?.anilistId);
+    const aniId = (typeof aniInfo === 'object' && aniInfo?.anilistId) || (typeof aniInfo === 'number' ? aniInfo : null);
 
     // --- Step 2: Build servers list ---
     const servers = [];
@@ -114,35 +117,36 @@ router.get('/:slug', async (req, res, next) => {
       }
     }
 
-    // B. Add Universal HD players (always available via AniList ID)
-    if (aniId) {
+    // B. Add Universal HD players (VidLink Multi-Quality with Sub/Dub switching)
+    if (malId) {
       servers.push({
-        server: '▶ Server HD 1 (Multi-Quality)',
+        server: '▶ Server HD 1 (Multi-Quality Sub)',
         streams: [
-          { quality: '1080p', url: `https://2embed.skin/embed/anime?id=${aniId}&ep=${epNum}` },
-          { quality: '720p', url: `https://2embed.skin/embed/anime?id=${aniId}&ep=${epNum}` },
-          { quality: 'HD', url: `https://2embed.skin/embed/anime?id=${aniId}&ep=${epNum}` },
+          { quality: '1080p', url: `https://vidlink.pro/anime/${malId}/${epNum}/sub?fallback=true` },
+          { quality: '720p', url: `https://vidlink.pro/anime/${malId}/${epNum}/sub?fallback=true` },
+          { quality: 'HD', url: `https://vidlink.pro/anime/${malId}/${epNum}/sub?fallback=true` },
         ],
       });
 
       servers.push({
-        server: '▶ Server HD 2 (Backup)',
+        server: '▶ Server HD 2 (Multi-Quality Dub/Backup)',
         streams: [
-          { quality: '1080p', url: `https://2embed.cc/embed/anime?id=${aniId}&ep=${epNum}` },
-          { quality: '720p', url: `https://2embed.cc/embed/anime?id=${aniId}&ep=${epNum}` },
-          { quality: 'HD', url: `https://2embed.cc/embed/anime?id=${aniId}&ep=${epNum}` },
+          { quality: '1080p', url: `https://vidlink.pro/anime/${malId}/${epNum}/dub?fallback=true` },
+          { quality: '720p', url: `https://vidlink.pro/anime/${malId}/${epNum}/dub?fallback=true` },
+          { quality: 'HD', url: `https://vidlink.pro/anime/${malId}/${epNum}/dub?fallback=true` },
         ],
       });
     }
 
-    // Fallback: If still 0 servers and no aniId, try alt resolution
+    // Fallback: If still 0 servers and no malId, try alt resolution
     if (servers.length === 0) {
-      const altId = await resolveAnilistId(cleanSlug.replace(/-/g, ' ')).catch(() => null);
+      const altInfo = await resolveAnilistId(cleanSlug.replace(/-/g, ' ')).catch(() => null);
+      const altId = (typeof altInfo === 'object' && altInfo?.malId) || (typeof altInfo === 'number' ? altInfo : altInfo?.anilistId);
       if (altId) {
         servers.push({
           server: '▶ Server HD 1',
           streams: [
-            { quality: 'HD', url: `https://2embed.skin/embed/anime?id=${altId}&ep=${epNum}` },
+            { quality: 'HD', url: `https://vidlink.pro/anime/${altId}/${epNum}/sub?fallback=true` },
           ],
         });
       }

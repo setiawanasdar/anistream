@@ -32,6 +32,7 @@ const EMBED_SAFE_HOSTS = [
   'blogger.com',
   'google.com',
   // Universal HD Anime players
+  'vidlink.pro',
   '2embed.skin',
   '2embed.cc',
   '2embed.org',
