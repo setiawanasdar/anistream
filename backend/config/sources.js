@@ -2,30 +2,42 @@
 require('dotenv').config();
 
 /**
- * Source configuration for all scrapers.
+ * Source configuration for all scrapers (Integrated with wajik-anime-api sources).
  * Update baseUrl here or via environment variables when domains change.
  */
 module.exports = {
   sources: {
+    kuramanime: {
+      name: 'Kuramanime',
+      baseUrl: process.env.KURAMANIME_URL || 'https://kuramanime.ing',
+      enabled: true,
+      priority: 1,
+    },
     otakudesu: {
       name: 'Otakudesu',
-      baseUrl: process.env.OTAKUDESU_URL || 'https://otakudesu.cloud',
-      enabled: process.env.OTAKUDESU_ENABLED !== 'false',
-      priority: 1,
+      baseUrl: process.env.OTAKUDESU_URL || 'https://otakudesu.blog',
+      enabled: true,
+      priority: 2,
+    },
+    oploverz: {
+      name: 'Oploverz',
+      baseUrl: process.env.OPLOVERZ_URL || 'https://oploverz.am',
+      enabled: true,
+      priority: 3,
     },
     samehadaku: {
       name: 'Samehadaku',
-      baseUrl: process.env.SAMEHADAKU_URL || 'https://samehadaku.email',
-      enabled: false, // DISABLED: domain hijacked by gambling site (EDATOTO)
-      priority: 2,
+      baseUrl: process.env.SAMEHADAKU_URL || 'https://v1.samehadaku.how',
+      enabled: false,
+      priority: 4,
     },
     neonime: {
       name: 'Neonime',
       baseUrl: process.env.NEONIME_URL || 'https://neonime.fun',
-      enabled: false, // DISABLED: DNS not found (domain expired)
-      priority: 3,
+      enabled: false,
+      priority: 5,
     },
   },
-  /** Ordered list of sources to try when calling withFallback() */
-  fallbackOrder: ['otakudesu'],
+  /** Ordered list of active sources to try when calling withFallback() */
+  fallbackOrder: ['kuramanime', 'otakudesu', 'oploverz'],
 };

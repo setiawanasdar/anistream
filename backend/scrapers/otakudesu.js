@@ -2,7 +2,7 @@
 
 /**
  * Otakudesu Scraper (Enhanced with Full Completed/Batch & Multi-Language Support)
- * Base domain: https://otakudesu.cloud (configurable via OTAKUDESU_URL env var)
+ * Base domain: https://otakudesu.blog (configurable via OTAKUDESU_URL env var)
  */
 
 const cheerio = require('cheerio');
@@ -10,7 +10,7 @@ const { fetchHtml } = require('../utils/fetcher');
 const { sources } = require('../config/sources');
 
 function getBaseUrl() {
-  return sources.otakudesu.baseUrl || 'https://otakudesu.cloud';
+  return sources?.otakudesu?.baseUrl || 'https://otakudesu.blog';
 }
 
 // ---------------------------------------------------------------------------
