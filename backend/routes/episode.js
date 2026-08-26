@@ -79,7 +79,7 @@ router.get('/:slug', async (req, res, next) => {
     const malId = (typeof aniInfo === 'object' && aniInfo?.malId) || (typeof aniInfo === 'number' ? aniInfo : aniInfo?.anilistId);
     const aniId = (typeof aniInfo === 'object' && aniInfo?.anilistId) || (typeof aniInfo === 'number' ? aniInfo : null);
 
-    // --- Step 2: Build servers list ---
+    // --- Step 2: Build servers list (Sub Indo servers from scrapers) ---
     const servers = [];
 
     const BLOCKED_STREAM_DOMAINS = [
@@ -93,37 +93,7 @@ router.get('/:slug', async (req, res, next) => {
       'yourupload', 'mixdrop', 'vidoza', 'upstream', 'vudeo',
     ];
 
-    // A. Add Universal Ultra HD players (1080p / 720p Remastered Source)
-    if (malId) {
-      servers.push({
-        server: '▶ Server HD 1 (Ultra HD 1080p / 720p Sub)',
-        streams: [
-          { quality: '1080p', url: `https://vidlink.pro/anime/${malId}/${epNum}/sub` },
-          { quality: '720p', url: `https://vidlink.pro/anime/${malId}/${epNum}/sub` },
-          { quality: 'HD', url: `https://vidlink.pro/anime/${malId}/${epNum}/sub` },
-        ],
-      });
-
-      servers.push({
-        server: '▶ Server HD 2 (SmashyStream 1080p Full HD)',
-        streams: [
-          { quality: '1080p', url: `https://embed.smashystream.com/playere.php?tmdb=0&mal=${malId}&ep=${epNum}` },
-          { quality: '720p', url: `https://embed.smashystream.com/playere.php?tmdb=0&mal=${malId}&ep=${epNum}` },
-          { quality: 'HD', url: `https://embed.smashystream.com/playere.php?tmdb=0&mal=${malId}&ep=${epNum}` },
-        ],
-      });
-
-      servers.push({
-        server: '▶ Server HD 3 (Ultra HD 1080p Dub)',
-        streams: [
-          { quality: '1080p', url: `https://vidlink.pro/anime/${malId}/${epNum}/dub` },
-          { quality: '720p', url: `https://vidlink.pro/anime/${malId}/${epNum}/dub` },
-          { quality: 'HD', url: `https://vidlink.pro/anime/${malId}/${epNum}/dub` },
-        ],
-      });
-    }
-
-    // B. Add Sub Indo streams from scraper (Filedon, Vidhide, Blogger SD, etc.)
+    // Add Sub Indo streams from scraper (Filedon, Vidhide, Mega, Oploverz, etc.)
     if (scraperData && Array.isArray(scraperData.servers)) {
       for (const s of scraperData.servers) {
         if (s && Array.isArray(s.streams) && s.streams.length > 0) {
@@ -143,20 +113,6 @@ router.get('/:slug', async (req, res, next) => {
             });
           }
         }
-      }
-    }
-
-    // Fallback: If still 0 servers and no malId, try alt resolution
-    if (servers.length === 0) {
-      const altInfo = await resolveAnilistId(cleanSlug.replace(/-/g, ' ')).catch(() => null);
-      const altId = (typeof altInfo === 'object' && altInfo?.malId) || (typeof altInfo === 'number' ? altInfo : altInfo?.anilistId);
-      if (altId) {
-        servers.push({
-          server: '▶ Server HD 1',
-          streams: [
-            { quality: 'HD', url: `https://vidlink.pro/anime/${altId}/${epNum}/sub` },
-          ],
-        });
       }
     }
 
