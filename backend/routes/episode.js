@@ -104,28 +104,28 @@ router.get('/:slug', async (req, res, next) => {
     }
 
     // Otakudesu scraper streams (if any valid iframes exist)
+    // Only include domains that allow iframe embedding in third-party sites
+    const BLOCKED_STREAM_DOMAINS = [
+      // Download hosts
+      'mega.nz', 'mediafire', 'acefile', 'gdrive', 'drive.google',
+      'zippyshare', 'kumpulbagi', 'otakufiles', 'racaty', 'letsupload',
+      'hxfile', 'hexupload', 'fembed', 'uplod', 'moevideo', 'upfile',
+      'gofile.io', 'uploadgram', 'clicknupload', 'mirrorace',
+      // Servers that block X-Frame-Options (refuse to connect in iframe)
+      'desustream', 'desudrive', 'desu60', 'desufast', 'desuarchive',
+      'okstream', 'okestream', 'shinobicdn', 'streamsss',
+      'streamcrypt', 'streamlare', 'streamgg', 'streamta',
+      // Other download-redirect hosts
+      'yourupload', 'mixdrop', 'vidoza', 'upstream', 'vudeo',
+    ];
+
     if (scraperData && Array.isArray(scraperData.servers)) {
       for (const s of scraperData.servers) {
         if (s && Array.isArray(s.streams) && s.streams.length > 0) {
-          // Only include if streams are actual embed URLs (not download hosts)
           const validStreams = s.streams.filter(st => {
             const url = (st.url || '').toLowerCase();
-            return url.startsWith('http') &&
-              !url.includes('mega.nz') &&
-              !url.includes('mediafire') &&
-              !url.includes('acefile') &&
-              !url.includes('gdrive') &&
-              !url.includes('zippyshare') &&
-              !url.includes('kumpulbagi') &&
-              !url.includes('otakufiles') &&
-              !url.includes('racaty') &&
-              !url.includes('letsupload') &&
-              !url.includes('hxfile') &&
-              !url.includes('hexupload') &&
-              !url.includes('fembed') &&
-              !url.includes('uplod') &&
-              !url.includes('moevideo') &&
-              !url.includes('upfile');
+            if (!url.startsWith('http')) return false;
+            return !BLOCKED_STREAM_DOMAINS.some(domain => url.includes(domain));
           });
           if (validStreams.length > 0) {
             servers.push({

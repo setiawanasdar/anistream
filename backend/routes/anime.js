@@ -77,57 +77,58 @@ router.get('/popular', async (req, res, next) => {
 router.get('/search', async (req, res) => {
   const q = (req.query.q || '').trim();
   if (!q) {
-    return res.status(400).json({
-      success: false,
-      error: 'Missing query parameter: q',
-    });
+    return res.status(400).json({ success: false, error: 'Missing query parameter: q' });
   }
 
   try {
-    // Strategy: Run AniList (fast, reliable, always returns series not episodes)
-    // and Otakudesu in parallel. Prefer Otakudesu if it responds in time (has
-    // Sub Indo metadata), otherwise use AniList results.
-
     const otakudesu = require('../scrapers/otakudesu');
 
-    // Short timeout for Otakudesu search to prevent blocking the response
-    const otakudesuPromise = Promise.race([
-      otakudesu.searchAnime(q),
-      new Promise(resolve => setTimeout(() => resolve([]), 6000)), // 6s timeout
+    // Run both in parallel — AniList is primary (fast, complete, series-only)
+    // Otakudesu gets 8s to respond, used to enrich/replace matching results
+    const [anilistResults, otakuResults] = await Promise.all([
+      anilist.searchAnime(q, 1, 50).catch(() => []),
+      Promise.race([
+        otakudesu.searchAnime(q),
+        new Promise(resolve => setTimeout(() => resolve([]), 8000)),
+      ]).catch(() => []),
     ]);
 
-    const anilistPromise = anilist.searchAnime(q, 1, 20);
-
-    const [otakuResults, anilistResults] = await Promise.all([
-      otakudesuPromise.catch(() => []),
-      anilistPromise.catch(() => []),
-    ]);
-
-    // Filter Otakudesu results: ONLY keep series (not per-episode entries)
-    // Episode entries have titles like "Anime Name Episode 1" or slugs with "episode"
-    const validOtakuResults = otakuResults.filter(item => {
+    // Filter Otakudesu: skip per-episode entries (title/slug contains "episode N")
+    const validOtakuResults = (otakuResults || []).filter(item => {
       if (!item.title || !item.slug) return false;
-      // Skip items that are per-episode entries
-      const titleLower = item.title.toLowerCase();
-      const slugLower = item.slug.toLowerCase();
-      if (titleLower.includes('episode') && /episode\s*\d+/i.test(titleLower)) return false;
-      if (slugLower.includes('episode-') && /episode-\d+/i.test(slugLower)) return false;
+      if (/episode\s*\d+/i.test(item.title)) return false;
+      if (/episode-\d+/i.test(item.slug)) return false;
       return true;
     });
 
-    // If Otakudesu returned valid series results, use those (they have Sub Indo context)
-    if (validOtakuResults.length > 0) {
-      return res.json({ success: true, source: 'otakudesu', query: q, data: validOtakuResults });
+    // Merge: use AniList as base (large result set), overlay with Otakudesu data where slug matches
+    // This gives us: AniList's broad coverage + Otakudesu's Sub Indo posters & ratings
+    let finalResults;
+    if (validOtakuResults.length > 0 && anilistResults.length === 0) {
+      // Only Otakudesu responded
+      finalResults = validOtakuResults;
+    } else if (validOtakuResults.length > 0 && anilistResults.length > 0) {
+      // Both responded: Otakudesu results first (exact Sub Indo matches), then AniList extras
+      const otakuSlugs = new Set(validOtakuResults.map(r => r.slug));
+      const anilistExtras = anilistResults.filter(r => {
+        // Include AniList entries that aren't already covered by Otakudesu results
+        const titleNorm = r.title.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return !validOtakuResults.some(or =>
+          or.title.toLowerCase().replace(/[^a-z0-9]/g, '') === titleNorm
+        );
+      });
+      finalResults = [...validOtakuResults, ...anilistExtras];
+    } else {
+      // Only AniList responded — use it (always proper series, never episodes)
+      finalResults = anilistResults || [];
     }
 
-    // Otherwise fall back to AniList results (always proper series, never episodes)
-    return res.json({ success: true, source: 'anilist', query: q, data: anilistResults || [] });
+    return res.json({ success: true, source: 'combined', query: q, data: finalResults });
 
   } catch (err) {
     console.error('[routes/anime] /search error:', err.message);
-    // Final fallback: AniList only
     try {
-      const anilistData = await anilist.searchAnime(q);
+      const anilistData = await anilist.searchAnime(q, 1, 50);
       res.json({ success: true, source: 'anilist', query: q, data: anilistData || [] });
     } catch {
       res.json({ success: true, source: 'anilist', query: q, data: [] });

@@ -8,24 +8,50 @@ interface VideoPlayerProps {
   onProgress?: (percent: number) => void;
 }
 
+// Domains that ARE safe to embed as iframes (they allow X-Frame-Options: ALLOW)
 const EMBED_DOMAINS = [
-  'embed', 'player', 'stream', 'desustream', 'desudrive',
+  'embed', 'player', 'stream',
   'filemoon', 'vidplay', 'vidstream', 'mp4upload', 'streamtape',
-  'doodstream', 'dood', 'yourupload', 'okru', 'streamsb', 'sbplay',
-  'sendvid', 'streamwish', 'blogger.com', 'drive.google',
+  'doodstream', 'dood', 'streamsb', 'sbplay',
+  'sendvid', 'streamwish', 'blogger.com',
   // Universal HD players
   'vidsrc.me', 'vidsrc.pm', 'vidsrc.in', 'vidsrc.net',
+];
+
+// Domains that block iframe embedding (X-Frame-Options: DENY/SAMEORIGIN)
+// These should NEVER be rendered as iframes in our player
+const BLOCKED_EMBED_DOMAINS = [
+  'desustream', 'desudrive', 'desu60', 'desufast',
+  'okstream', 'okestream', 'shinobicdn',
+  'yourupload', 'mixdrop', 'vidoza', 'upstream',
+  'mega.nz', 'mediafire', 'gdrive', 'drive.google',
+  'zippyshare', 'kumpulbagi', 'racaty', 'hxfile',
 ];
 
 function isEmbedUrl(url: string): boolean {
   if (!url) return false;
   try {
     const u = new URL(url);
-    return EMBED_DOMAINS.some((d) => u.hostname.includes(d) || u.pathname.includes(d));
+    const host = u.hostname.toLowerCase();
+    // Never embed blocked domains
+    if (BLOCKED_EMBED_DOMAINS.some(d => host.includes(d))) return false;
+    return EMBED_DOMAINS.some((d) => host.includes(d) || u.pathname.includes(d));
   } catch {
-    return url.includes('embed') || url.includes('player') || url.includes('iframe') || url.startsWith('http');
+    return url.includes('embed') || url.includes('player') || url.startsWith('http');
   }
 }
+
+// Also used to check if a URL is safe to show in the player at all
+function isPlayableUrl(url: string): boolean {
+  if (!url) return false;
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return !BLOCKED_EMBED_DOMAINS.some(d => host.includes(d));
+  } catch {
+    return true;
+  }
+}
+
 
 function getPreferredQuality(streams: { quality: string; url: string }[]): string {
   const preferred = ['1080p', '720p', '480p', '360p', 'HD'];
@@ -46,7 +72,8 @@ export default function VideoPlayer({ servers = [], title, onProgress }: VideoPl
         if (s.server && Array.isArray(s.streams)) {
           return {
             server: s.server,
-            streams: s.streams.filter((st: any) => st && st.url),
+            // Filter out blocked domains (desustream, etc.) at component level too
+            streams: s.streams.filter((st: any) => st && st.url && isPlayableUrl(st.url)),
           };
         }
         // Format 2: { label: string, embedUrl: string }
