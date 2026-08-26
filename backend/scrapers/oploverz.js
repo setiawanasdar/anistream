@@ -202,13 +202,16 @@ async function getEpisode(slug) {
     const cleanSlug = slug.replace(/^https?:\/\/[^/]+\//, '').replace(/\/$/, '');
     const numMatch = cleanSlug.match(/episode-(\d+)/i);
     const epNum = numMatch ? numMatch[1] : '1';
+    const epInt = parseInt(epNum, 10) || 1;
+    const baseAnime = cleanSlug.replace(/-episode-\d+.*/i, '');
 
     const trySlugs = [
+      `${baseAnime}-episode-${String(epInt).padStart(3, '0')}`,
+      `${baseAnime}-episode-${String(epInt).padStart(2, '0')}`,
       cleanSlug,
-      cleanSlug.replace(/-sub-indo$/i, ''),
-      cleanSlug.replace(/-episode-(\d+).*/i, `-episode-${epNum.padStart(3, '0')}`),
-      cleanSlug.replace(/-episode-(\d+).*/i, `-episode-${epNum.padStart(2, '0')}`),
-      cleanSlug.replace(/-episode-(\d+).*/i, `-episode-${parseInt(epNum, 10)}`),
+      `${baseAnime}-episode-${epInt}-sub-indo`,
+      `${baseAnime}-episode-${epInt}`,
+      `${baseAnime}-0-episode-${String(epInt).padStart(2, '0')}`,
     ];
 
     const uniqueSlugs = [...new Set(trySlugs)];
@@ -219,7 +222,14 @@ async function getEpisode(slug) {
       try {
         const url = `${getBaseUrl()}/${s}`;
         const res = await fetchHtml(url);
-        if (res && (res.includes('entry-title') || res.includes('iframe') || res.includes('player'))) {
+        if (res && (res.includes('entry-title') || res.includes('iframe'))) {
+          const $ = cheerio.load(res);
+          const pageTitle = $('h1.entry-title').text().trim();
+          const epMatchInTitle = pageTitle.match(/episode\s*(\d+)/i);
+          // Skip if WordPress redirected to a different episode number (e.g. 1 -> 100)
+          if (epMatchInTitle && parseInt(epMatchInTitle[1], 10) !== epInt) {
+            continue;
+          }
           html = res;
           foundSlug = s;
           break;

@@ -33,6 +33,7 @@ const EMBED_SAFE_HOSTS = [
   'google.com',
   // Universal HD Anime players
   'vidlink.pro',
+  'smashystream.com',
   '2embed.skin',
   '2embed.cc',
   '2embed.org',

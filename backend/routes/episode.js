@@ -117,23 +117,32 @@ router.get('/:slug', async (req, res, next) => {
       }
     }
 
-    // B. Add Universal HD players (VidLink Multi-Quality with Sub/Dub switching)
+    // B. Add Universal HD players (VidLink + SmashyStream Multi-Source)
     if (malId) {
       servers.push({
         server: '▶ Server HD 1 (Multi-Quality Sub)',
         streams: [
-          { quality: '1080p', url: `https://vidlink.pro/anime/${malId}/${epNum}/sub?fallback=true` },
-          { quality: '720p', url: `https://vidlink.pro/anime/${malId}/${epNum}/sub?fallback=true` },
-          { quality: 'HD', url: `https://vidlink.pro/anime/${malId}/${epNum}/sub?fallback=true` },
+          { quality: '1080p', url: `https://vidlink.pro/anime/${malId}/${epNum}/sub` },
+          { quality: '720p', url: `https://vidlink.pro/anime/${malId}/${epNum}/sub` },
+          { quality: 'HD', url: `https://vidlink.pro/anime/${malId}/${epNum}/sub` },
         ],
       });
 
       servers.push({
-        server: '▶ Server HD 2 (Multi-Quality Dub/Backup)',
+        server: '▶ Server HD 2 (SmashyStream HD)',
         streams: [
-          { quality: '1080p', url: `https://vidlink.pro/anime/${malId}/${epNum}/dub?fallback=true` },
-          { quality: '720p', url: `https://vidlink.pro/anime/${malId}/${epNum}/dub?fallback=true` },
-          { quality: 'HD', url: `https://vidlink.pro/anime/${malId}/${epNum}/dub?fallback=true` },
+          { quality: '1080p', url: `https://embed.smashystream.com/playere.php?tmdb=0&mal=${malId}&ep=${epNum}` },
+          { quality: '720p', url: `https://embed.smashystream.com/playere.php?tmdb=0&mal=${malId}&ep=${epNum}` },
+          { quality: 'HD', url: `https://embed.smashystream.com/playere.php?tmdb=0&mal=${malId}&ep=${epNum}` },
+        ],
+      });
+
+      servers.push({
+        server: '▶ Server HD 3 (Multi-Quality Dub)',
+        streams: [
+          { quality: '1080p', url: `https://vidlink.pro/anime/${malId}/${epNum}/dub` },
+          { quality: '720p', url: `https://vidlink.pro/anime/${malId}/${epNum}/dub` },
+          { quality: 'HD', url: `https://vidlink.pro/anime/${malId}/${epNum}/dub` },
         ],
       });
     }
@@ -146,7 +155,7 @@ router.get('/:slug', async (req, res, next) => {
         servers.push({
           server: '▶ Server HD 1',
           streams: [
-            { quality: 'HD', url: `https://vidlink.pro/anime/${altId}/${epNum}/sub?fallback=true` },
+            { quality: 'HD', url: `https://vidlink.pro/anime/${altId}/${epNum}/sub` },
           ],
         });
       }
