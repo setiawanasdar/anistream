@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 /**
  * Anime routes
@@ -74,7 +74,7 @@ router.get('/popular', async (req, res, next) => {
 // ---------------------------------------------------------------------------
 // GET /api/anime/search?q=<keyword>
 // ---------------------------------------------------------------------------
-router.get('/search', async (req, res, next) => {
+router.get('/search', async (req, res) => {
   const q = (req.query.q || '').trim();
   if (!q) {
     return res.status(400).json({
@@ -84,16 +84,23 @@ router.get('/search', async (req, res, next) => {
   }
 
   try {
-    const { data, source } = await withFallback(fallbackOrder, 'searchAnime', q);
-    res.json({ success: true, source, query: q, data });
-  } catch {
-    // AniList fallback for search
-    try {
-      const data = await anilist.searchAnime(q);
-      res.json({ success: true, source: 'anilist', query: q, data });
-    } catch (err) {
-      next(err);
+    const otakudesu = require('../scrapers/otakudesu');
+    const results = await otakudesu.searchAnime(q);
+
+    if (Array.isArray(results) && results.length > 0) {
+      return res.json({ success: true, source: 'otakudesu', query: q, data: results });
     }
+
+    // AniList fallback for metadata search if otakudesu yields 0 results
+    try {
+      const anilistData = await anilist.searchAnime(q);
+      return res.json({ success: true, source: 'anilist', query: q, data: anilistData || [] });
+    } catch {
+      return res.json({ success: true, source: 'otakudesu', query: q, data: [] });
+    }
+  } catch (err) {
+    console.error('[routes/anime] /search error:', err.message);
+    res.json({ success: true, source: 'otakudesu', query: q, data: [] });
   }
 });
 

@@ -198,20 +198,38 @@ async function getPopular() {
 
 async function searchSingle(q) {
   try {
-    const url = `${getBaseUrl()}/?s=${encodeURIComponent(q)}&post_type=anime`;
-    const html = await fetchHtml(url);
+    const cleanQ = encodeURIComponent(q.trim());
+    const urls = [
+      `${getBaseUrl()}/?s=${cleanQ}`,
+      `${getBaseUrl()}/?s=${cleanQ}&post_type=anime`,
+    ];
+
+    let html = '';
+    for (const url of urls) {
+      try {
+        html = await fetchHtml(url, { referer: getBaseUrl() });
+        if (html && (html.includes('chivsrc') || html.includes('venz') || html.includes('jdlflm') || html.includes('thumbz'))) {
+          break;
+        }
+      } catch {
+        // try next url
+      }
+    }
+
+    if (!html) return [];
+
     const $ = cheerio.load(html);
     const results = [];
 
-    $('.chivsrc ul li, .venz ul li').each((_, el) => {
+    $('.chivsrc ul li, .chivsrc li, ul.chivsrc > li, .venz ul li, .rapi ul li, .venutama ul li').each((_, el) => {
       const $el = $(el);
 
-      const linkEl = $el.find('h2 a, .thumb a, a').first();
-      const title = linkEl.text().trim() || $el.find('h2').first().text().trim();
+      const linkEl = $el.find('h2 a, .thumb a, .thumbz a, a').first();
+      const title = linkEl.text().trim() || $el.find('h2').first().text().trim() || linkEl.attr('title') || '';
       const href = linkEl.attr('href') || '';
       const slug = extractSlug(href);
 
-      const imgEl = $el.find('img');
+      const imgEl = $el.find('img').first();
       const poster = imgEl.attr('data-src') || imgEl.attr('src') || '';
 
       const spans = $el.find('.set, li span');
@@ -219,7 +237,7 @@ async function searchSingle(q) {
       const statusText = spans.eq(2).text().replace(/Status:/i, '').trim();
       const ratingText = spans.eq(3).text().replace(/Rating:/i, '').trim();
 
-      if (title && slug) {
+      if (title && slug && !title.toLowerCase().includes('otakudesu')) {
         results.push({
           id: slug,
           title,
@@ -246,19 +264,21 @@ async function searchSingle(q) {
 async function searchAnime(query) {
   try {
     let results = await searchSingle(query);
+    if (results.length > 0) return results;
 
-    // If query returned few results, look up alternate / Romaji titles from AniList
+    // If query returned 0 results, check alternate / Romaji titles from AniList
     try {
       const anilist = require('./anilist');
       const altTitles = await anilist.getAlternateTitles(query);
       const filteredAlts = altTitles
         .filter((t) => /^[a-zA-Z0-9\s:;,'\-_]+$/.test(t) && t.toLowerCase() !== query.toLowerCase())
-        .slice(0, 3);
+        .slice(0, 2);
 
       for (const alt of filteredAlts) {
         const altResults = await searchSingle(alt);
         if (altResults.length > 0) {
           results.push(...altResults);
+          break;
         }
       }
     } catch {
