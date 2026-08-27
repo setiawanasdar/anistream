@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth';
 
 interface AuthModalProps {
@@ -17,8 +18,25 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Prevent background scrolling when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
+
+  if (!isOpen || !mounted) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +53,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     if (isRegister) {
       const res = await signUpWithEmail(email.trim(), password, fullName.trim());
       if (res.success) {
-        setMessage('Akun berhasil dibuat! Silakan cek email Anda untuk konfirmasi (jika email confirmation diaktifkan di Supabase) atau langsung login.');
+        setMessage('Akun berhasil dibuat! Silakan cek email Anda untuk konfirmasi atau langsung login.');
         setTimeout(() => {
           onClose();
         }, 2000);
@@ -64,9 +82,15 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-sm overflow-y-auto animate-fadeIn">
-      <div className="relative w-full max-w-md my-auto bg-[#121212] border border-[#2a2a2a] rounded-2xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+  const modalContent = (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-sm overflow-y-auto animate-fadeIn"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-md my-auto bg-[#121212] border border-[#2a2a2a] rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col z-[10000]"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header - Fixed at top */}
         <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-[#222] bg-[#161616] flex-shrink-0">
           <div className="flex items-center gap-2.5">
@@ -98,7 +122,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                 ⚠️ Supabase Keys Belum Diatur
               </p>
               <p className="text-amber-300/80 text-[11px] leading-relaxed">
-                Tambahkan <code>NEXT_PUBLIC_SUPABASE_URL</code> dan <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> di file <code>.env.local</code> / pengaturan environment hosting Anda untuk mengaktifkan cloud login.
+                Tambahkan <code>NEXT_PUBLIC_SUPABASE_URL</code> dan <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> di pengaturan environment hosting Anda untuk mengaktifkan cloud login.
               </p>
             </div>
           )}
@@ -238,4 +262,6 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }
