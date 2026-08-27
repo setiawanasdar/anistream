@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMalAuth } from '@/lib/hooks/useMalAuth';
 
 interface MalAuthModalProps {
@@ -8,7 +8,6 @@ interface MalAuthModalProps {
   onClose: () => void;
 }
 
-// Generate secure random string for PKCE code_verifier
 function generateCodeVerifier(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
   let verifier = '';
@@ -20,6 +19,7 @@ function generateCodeVerifier(): string {
 
 export default function MalAuthModal({ isOpen, onClose }: MalAuthModalProps) {
   const { loginWithToken, loginWithCode, loading } = useMalAuth();
+  const [customClientId, setCustomClientId] = useState('');
   const [tokenInput, setTokenInput] = useState('');
   const [codeVerifierInput, setCodeVerifierInput] = useState('');
   const [authCodeInput, setAuthCodeInput] = useState('');
@@ -27,17 +27,35 @@ export default function MalAuthModal({ isOpen, onClose }: MalAuthModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  useEffect(() => {
+    const savedClientId = localStorage.getItem('anistream_mal_client_id') || '';
+    if (savedClientId) setCustomClientId(savedClientId);
+  }, []);
+
   if (!isOpen) return null;
 
-  const clientId = process.env.NEXT_PUBLIC_MAL_CLIENT_ID || '6114d00ca681b77c0115652520400e21';
+  const getEffectiveClientId = () => {
+    return customClientId.trim() || process.env.NEXT_PUBLIC_MAL_CLIENT_ID || '6114d00ca681b77c0115652520400e21';
+  };
 
   const handleStartOAuth = () => {
     setError(null);
+    const clientId = getEffectiveClientId();
+    if (!clientId) {
+      setError('Masukkan Client ID MyAnimeList Anda terlebih dahulu.');
+      return;
+    }
+
+    // Save clientId to localStorage
+    if (customClientId.trim()) {
+      localStorage.setItem('anistream_mal_client_id', customClientId.trim());
+    }
+
     const verifier = generateCodeVerifier();
     sessionStorage.setItem('mal_code_verifier', verifier);
     setCodeVerifierInput(verifier);
 
-    // MyAnimeList OAuth PKCE Authorization URL (open in full new tab to avoid popup cookie loops)
+    // MyAnimeList OAuth PKCE Authorization URL
     const authUrl = `https://myanimelist.net/v1/oauth2/authorize?response_type=code&client_id=${clientId}&code_challenge=${verifier}&code_challenge_method=plain`;
     window.open(authUrl, '_blank');
   };
@@ -45,10 +63,11 @@ export default function MalAuthModal({ isOpen, onClose }: MalAuthModalProps) {
   const handleExchangeCode = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    const clientId = getEffectiveClientId();
     const verifier = codeVerifierInput || sessionStorage.getItem('mal_code_verifier') || '';
     let rawCode = authCodeInput.trim();
 
-    // Auto-extract code if user pastes the entire redirect URL (e.g. https://...?code=ABC123)
+    // Auto-extract code if user pastes the full redirected URL
     if (rawCode.includes('code=')) {
       const match = rawCode.match(/[?&]code=([^&]+)/);
       if (match && match[1]) {
@@ -57,7 +76,7 @@ export default function MalAuthModal({ isOpen, onClose }: MalAuthModalProps) {
     }
 
     if (!rawCode) {
-      setError('Masukkan Authorization Code yang didapat dari halaman MyAnimeList.');
+      setError('Masukkan Authorization Code atau salin URL hasil otorisasi MAL.');
       return;
     }
     if (!verifier) {
@@ -73,7 +92,7 @@ export default function MalAuthModal({ isOpen, onClose }: MalAuthModalProps) {
         window.location.reload();
       }, 1000);
     } else {
-      setError(res.error || 'Autentikasi gagal. Pastikan kode benar dan belum kadaluwarsa.');
+      setError(res.error || 'Autentikasi gagal. Pastikan Client ID dan kode benar.');
     }
   };
 
@@ -99,7 +118,7 @@ export default function MalAuthModal({ isOpen, onClose }: MalAuthModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-      <div className="relative w-full max-w-md bg-[#121212] border border-[#2a2a2a] rounded-2xl shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-lg bg-[#121212] border border-[#2a2a2a] rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#222] bg-[#161616]">
           <div className="flex items-center gap-2.5">
@@ -108,7 +127,7 @@ export default function MalAuthModal({ isOpen, onClose }: MalAuthModalProps) {
             </div>
             <div>
               <h3 className="text-white font-bold text-base">Hubungkan MyAnimeList</h3>
-              <p className="text-gray-400 text-xs">Sinkronkan riwayat tontonan & watchlist</p>
+              <p className="text-gray-400 text-xs">Sinkronkan riwayat tontonan & watchlist akun Anda</p>
             </div>
           </div>
           <button
@@ -131,7 +150,7 @@ export default function MalAuthModal({ isOpen, onClose }: MalAuthModalProps) {
                 : 'border-transparent text-gray-400 hover:text-gray-200'
             }`}
           >
-            OAuth2 Otomatis (Rekomendasi)
+            OAuth2 Otorisasi (Rekomendasi)
           </button>
           <button
             onClick={() => { setActiveTab('token'); setError(null); }}
@@ -146,7 +165,7 @@ export default function MalAuthModal({ isOpen, onClose }: MalAuthModalProps) {
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-4 overflow-y-auto">
           {error && (
             <div className="p-3 text-xs bg-red-950/50 border border-red-800/60 text-red-300 rounded-lg">
               {error}
@@ -164,51 +183,61 @@ export default function MalAuthModal({ isOpen, onClose }: MalAuthModalProps) {
 
           {activeTab === 'oauth' ? (
             <div className="space-y-4">
-              {/* Tip to avoid looping */}
-              <div className="bg-[#181818] p-3.5 rounded-xl border border-[#262626] text-xs text-gray-300 space-y-2">
-                <div className="flex items-center gap-1.5 text-amber-400 font-semibold">
-                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span>Tips agar tidak looping/ngulang di halaman login MAL:</span>
-                </div>
-                <p className="text-gray-400 text-[11px] leading-relaxed">
-                  Pastikan browser Anda sudah dalam keadaan <strong>Login di situs MyAnimeList</strong> terlebih dahulu agar halaman otorisasi langsung memunculkan tombol <strong>Allow</strong> tanpa perlu ketik username/password lagi.
+              {/* Petunjuk Praktis */}
+              <div className="bg-[#181818] p-4 rounded-xl border border-[#262626] text-xs text-gray-300 space-y-2.5">
+                <p className="font-semibold text-white flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-full bg-[#2e51a2] text-white flex items-center justify-center text-[10px]">1</span>
+                  Buat / Masukkan Client ID Akun MAL Anda (Gratis & 10 Detik):
                 </p>
-                <div className="pt-1">
-                  <a
-                    href="https://myanimelist.net/login.php"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-[11px] text-[#8ba7f0] hover:underline font-semibold"
-                  >
-                    Buka situs MyAnimeList di tab baru untuk Login ↗
-                  </a>
+                <p className="text-gray-400 text-[11px] leading-relaxed">
+                  MyAnimeList mewajibkan setiap aplikasi memiliki Client ID. Anda bisa membuat Client ID akun Anda sendiri secara gratis:
+                </p>
+                <div className="bg-black/30 p-2.5 rounded-lg space-y-1 text-[11px] text-gray-400">
+                  <p>1. Buka <a href="https://myanimelist.net/apiconfig" target="_blank" rel="noreferrer" className="text-[#8ba7f0] font-bold hover:underline">myanimelist.net/apiconfig ↗</a></p>
+                  <p>2. Klik <strong>Create ID</strong> (Isi App Name: <em>AniStream</em>, App Type: <em>Other</em>, Redirect URL: <code>http://localhost</code>)</p>
+                  <p>3. Salin <strong>Client ID</strong> yang muncul dan tempel di bawah:</p>
                 </div>
               </div>
 
-              {/* Step 1 Button */}
-              <button
-                type="button"
-                onClick={handleStartOAuth}
-                className="w-full py-2.5 px-4 bg-[#2e51a2] hover:bg-[#254287] text-white text-sm font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 shadow-lg shadow-[#2e51a2]/20"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
-                1. Buka Halaman Otorisasi & Klik &quot;Allow&quot;
-              </button>
+              {/* Client ID Input */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">
+                  Client ID MyAnimeList Anda:
+                </label>
+                <input
+                  type="text"
+                  value={customClientId}
+                  onChange={(e) => setCustomClientId(e.target.value)}
+                  placeholder="Contoh: 6114d00ca681b77c..."
+                  className="w-full bg-[#181818] border border-[#333] focus:border-[#2e51a2] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-600 focus:outline-none font-mono"
+                />
+              </div>
 
-              <form onSubmit={handleExchangeCode} className="space-y-3 pt-1">
+              {/* Step 2 Button */}
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={handleStartOAuth}
+                  className="w-full py-2.5 px-4 bg-[#2e51a2] hover:bg-[#254287] text-white text-sm font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 shadow-lg shadow-[#2e51a2]/20"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                  2. Buka Otorisasi & Klik &quot;Allow&quot;
+                </button>
+              </div>
+
+              {/* Step 3 Form */}
+              <form onSubmit={handleExchangeCode} className="space-y-3 pt-2 border-t border-[#222]">
                 <div>
                   <label className="block text-xs font-medium text-gray-400 mb-1">
-                    2. Salin seluruh link URL browser atau kodenya, lalu tempel di sini:
+                    3. Salin seluruh URL browser (atau kode) setelah klik Allow, lalu tempel di sini:
                   </label>
                   <input
                     type="text"
                     value={authCodeInput}
                     onChange={(e) => setAuthCodeInput(e.target.value)}
-                    placeholder="Contoh: https://localhost/?code=... atau kodenya saja"
+                    placeholder="Contoh: http://localhost/?code=eyJhbGci... atau kodenya saja"
                     className="w-full bg-[#181818] border border-[#333] focus:border-[#2e51a2] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-600 focus:outline-none"
                   />
                 </div>
@@ -218,7 +247,7 @@ export default function MalAuthModal({ isOpen, onClose }: MalAuthModalProps) {
                   disabled={loading || !authCodeInput.trim()}
                   className="w-full py-2.5 bg-primary hover:bg-primary-dark disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
                 >
-                  {loading ? 'Menghubungkan...' : '3. Selesaikan Koneksi'}
+                  {loading ? 'Menghubungkan...' : '4. Selesaikan Koneksi'}
                 </button>
               </form>
             </div>
@@ -226,14 +255,14 @@ export default function MalAuthModal({ isOpen, onClose }: MalAuthModalProps) {
             <form onSubmit={handleDirectToken} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">
-                  Access Token MyAnimeList (Personal / Bearer Token)
+                  Access Token MyAnimeList (Bearer Token)
                 </label>
                 <textarea
-                  rows={3}
+                  rows={4}
                   value={tokenInput}
                   onChange={(e) => setTokenInput(e.target.value)}
                   placeholder="Tempel access_token MAL Anda di sini..."
-                  className="w-full bg-[#181818] border border-[#333] focus:border-[#2e51a2] rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none"
+                  className="w-full bg-[#181818] border border-[#333] focus:border-[#2e51a2] rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none font-mono"
                 />
               </div>
 
