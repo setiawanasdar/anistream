@@ -860,6 +860,42 @@ async function getSchedule() {
       }
     }
 
+    // Enrich schedule items with poster images from Ongoing anime
+    try {
+      const posterMap = new Map();
+      const ongoing = await getOngoing();
+      if (Array.isArray(ongoing)) {
+        ongoing.forEach((item) => {
+          if (item.slug && item.poster) {
+            const cleanSlug = item.slug.replace(/-sub-indo$/i, '').toLowerCase();
+            posterMap.set(cleanSlug, item.poster);
+            posterMap.set(item.slug.toLowerCase(), item.poster);
+          }
+          if (item.title && item.poster) {
+            posterMap.set(item.title.toLowerCase().trim(), item.poster);
+          }
+        });
+      }
+
+      schedule.forEach((day) => {
+        if (Array.isArray(day.animes)) {
+          day.animes.forEach((anime) => {
+            const baseSlug = (anime.slug || '').replace(/-sub-indo$/i, '').toLowerCase();
+            const existingPoster =
+              posterMap.get(baseSlug) ||
+              posterMap.get((anime.slug || '').toLowerCase()) ||
+              posterMap.get((anime.title || '').toLowerCase().trim());
+
+            if (existingPoster) {
+              anime.poster = existingPoster;
+            }
+          });
+        }
+      });
+    } catch {
+      // ignore enrichment error
+    }
+
     return schedule;
   } catch (err) {
     console.error('[otakudesu] getSchedule error:', err.message);

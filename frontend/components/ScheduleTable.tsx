@@ -106,23 +106,25 @@ export default function ScheduleTable({ schedule = [] }: ScheduleTableProps) {
               href={`/anime/${anime.slug}`}
               className="flex items-center gap-4 p-4 hover:bg-white/5 transition-colors group"
             >
-              {/* Poster or Icon */}
-              <div className="relative w-12 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-[#1a1a1a] border border-[#262626]">
+              {/* Poster or Stylish Anime Icon */}
+              <div className="relative w-12 h-16 sm:w-14 sm:h-20 flex-shrink-0 rounded-lg overflow-hidden bg-[#161616] border border-[#2a2a2a] shadow-md flex items-center justify-center">
                 {anime.poster ? (
                   <Image
                     src={anime.poster}
                     alt={anime.title}
                     fill
-                    sizes="48px"
-                    className="object-cover transition-transform duration-200 group-hover:scale-105"
+                    sizes="56px"
+                    className="object-cover transition-transform duration-300 group-hover:scale-105"
                     unoptimized
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-600">
-                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-primary/30 via-[#181818] to-purple-950/40 p-1 text-center select-none">
+                    <span className="text-white font-black text-base group-hover:text-primary-light transition-colors">
+                      {anime.title ? anime.title.charAt(0).toUpperCase() : 'A'}
+                    </span>
+                    <span className="text-[8px] text-gray-400 font-semibold uppercase tracking-wider mt-0.5">
+                      Anime
+                    </span>
                   </div>
                 )}
               </div>
