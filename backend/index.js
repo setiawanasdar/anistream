@@ -14,6 +14,7 @@ const animeRoutes    = require('./routes/anime');
 const episodeRoutes  = require('./routes/episode');
 const scheduleRoutes = require('./routes/schedule');
 const imageRoutes    = require('./routes/image');
+const malRoutes      = require('./routes/mal');
 
 const { sources, fallbackOrder } = require('./config/sources');
 
@@ -76,6 +77,9 @@ app.use('/api', scheduleRoutes);
 
 // Mount image proxy (no rate-limit, no cache – binary data)
 app.use('/api/image', imageRoutes);
+
+// Mount MyAnimeList integration routes
+app.use('/api/mal', malRoutes);
 
 // ---------------------------------------------------------------------------
 // Health check endpoint

@@ -6,6 +6,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import type { Anime } from '@/lib/api';
 import Image from 'next/image';
+import MalProfileButton from './MalProfileButton';
 
 export default function Navbar() {
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function Navbar() {
   const navLinks = [
     { href: '/', label: 'Beranda' },
     { href: '/schedule', label: 'Jadwal' },
+    { href: '/watchlist', label: 'Watchlist' },
   ];
 
   // Close dropdown on outside click
@@ -199,6 +201,9 @@ export default function Navbar() {
             </button>
           )}
         </div>
+
+        {/* MyAnimeList Connect / Profile Button */}
+        <MalProfileButton />
 
         {/* Mobile hamburger */}
         <button

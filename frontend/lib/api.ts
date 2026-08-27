@@ -93,6 +93,27 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<ApiRespo
   return json;
 }
 
+export interface MalUser {
+  id: number;
+  name: string;
+  picture?: string;
+  location?: string;
+  joined_at?: string;
+}
+
+export interface MalAnimeItem {
+  id: string;
+  malId: number;
+  title: string;
+  poster: string;
+  type: string;
+  totalEpisodes?: number | null;
+  status: 'watching' | 'completed' | 'on_hold' | 'dropped' | 'plan_to_watch' | string;
+  score: number;
+  numWatchedEpisodes: number;
+  updatedAt?: string;
+}
+
 export const api = {
   getOngoing: () => fetchApi<Anime[]>(`${API_BASE}/api/anime/ongoing`),
   getComplete: () => fetchApi<Anime[]>(`${API_BASE}/api/anime/complete`),
@@ -107,4 +128,35 @@ export const api = {
   getGenres: () => fetchApi<GenreItem[]>(`${API_BASE}/api/genres`),
   getGenreAnime: (slug: string, page = 1) =>
     fetchApi<Anime[]>(`${API_BASE}/api/genre/${slug}?page=${page}`),
+
+  // MyAnimeList API endpoints
+  malExchangeToken: (data: { code?: string; code_verifier?: string; refresh_token?: string; client_id?: string }) =>
+    fetch(`${API_BASE}/api/mal/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then((res) => res.json()),
+
+  malGetUser: (accessToken: string) =>
+    fetch(`${API_BASE}/api/mal/user`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }).then((res) => res.json()),
+
+  malGetAnimeList: (accessToken: string, status?: string, limit = 50) =>
+    fetch(`${API_BASE}/api/mal/animelist?status=${status || ''}&limit=${limit}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }).then((res) => res.json()),
+
+  malUpdateAnimeStatus: (
+    accessToken: string,
+    payload: { anime_id?: number | string; title?: string; status?: string; num_watched_episodes?: number; score?: number }
+  ) =>
+    fetch(`${API_BASE}/api/mal/update-status`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    }).then((res) => res.json()),
 };

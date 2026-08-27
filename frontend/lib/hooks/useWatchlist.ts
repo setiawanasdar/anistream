@@ -38,6 +38,29 @@ export function useWatchlist() {
         save(next);
         return next;
       });
+
+      // Background sync to MyAnimeList as plan_to_watch
+      try {
+        const malSaved = localStorage.getItem('anistream_mal_auth');
+        if (malSaved) {
+          const parsed = JSON.parse(malSaved);
+          if (parsed.accessToken) {
+            fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/mal/update-status`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${parsed.accessToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                title: anime.title || anime.slug,
+                status: 'plan_to_watch',
+              }),
+            }).catch(() => {});
+          }
+        }
+      } catch {
+        // ignore
+      }
     },
     [save]
   );
