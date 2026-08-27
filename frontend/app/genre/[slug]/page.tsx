@@ -32,13 +32,14 @@ export default function GenrePage() {
     setError(null);
     try {
       const res = await api.getGenreAnime(slug, pageNum);
-      const data = Array.isArray(res.data) ? res.data : [];
+      const raw = res?.data;
+      const data: Anime[] = Array.isArray(raw) ? raw : (raw as any)?.results || [];
       if (append) {
         setAnimes((prev) => [...prev, ...data]);
       } else {
         setAnimes(data);
       }
-      setHasMore(data.length >= 20); // assume 20 per page
+      setHasMore(data.length >= 10);
     } catch {
       setError('Gagal memuat anime genre ini.');
     } finally {

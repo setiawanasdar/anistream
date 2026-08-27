@@ -893,27 +893,57 @@ async function getGenres() {
   }
 }
 
-/**
- * Get anime by genre.
- */
 async function getGenreAnime(slug, page = 1) {
   try {
-    const base = `${getBaseUrl()}/genres/${slug}/`;
+    const cleanSlug = slug.replace(/^genres?\//, '').replace(/\/$/, '');
+    const base = `${getBaseUrl()}/genres/${cleanSlug}/`;
     const url = page > 1 ? `${base}page/${page}/` : base;
     const html = await fetchHtml(url, { referer: base });
     const $ = cheerio.load(html);
     const results = [];
 
-    $('.venz ul li, .rapi ul li, .venutama ul li').each((_, el) => {
-      const item = parseCard($, el);
-      if (item.title && item.slug) results.push(item);
+    // Otakudesu genre card selector: .col-anime
+    $('.col-anime').each((_, el) => {
+      const $el = $(el);
+      const titleA = $el.find('.col-anime-title a');
+      const title = titleA.text().trim();
+      const href = titleA.attr('href') || '';
+      const itemSlug = extractSlug(href);
+      const imgEl = $el.find('.col-anime-cover img');
+      const poster = imgEl.attr('data-src') || imgEl.attr('src') || '';
+      const rating = $el.find('.col-anime-rating').text().trim() || null;
+      const episodes = $el.find('.col-anime-eps').text().trim() || null;
+      const studio = $el.find('.col-anime-studio').text().trim() || null;
+
+      if (title && itemSlug) {
+        results.push({
+          id: itemSlug,
+          title,
+          slug: itemSlug,
+          poster,
+          type: 'TV',
+          status: 'Unknown',
+          episodes,
+          rating,
+          studio,
+          genres: [],
+        });
+      }
     });
 
+    // Fallback card selector
+    if (results.length === 0) {
+      $('.venz ul li, .rapi ul li, .venutama ul li').each((_, el) => {
+        const item = parseCard($, el);
+        if (item.title && item.slug) results.push(item);
+      });
+    }
+
     const hasNextPage = $('.pagination .page-numbers.next, .pagination a.next').length > 0;
-    return { results, page, hasNextPage };
+    return results;
   } catch (err) {
     console.error('[otakudesu] getGenreAnime error:', err.message);
-    return { results: [], page, hasNextPage: false };
+    return [];
   }
 }
 

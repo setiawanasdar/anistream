@@ -440,6 +440,26 @@ async function getAlternateTitles(query) {
   }
 }
 
+async function getGenreAnime(genre, page = 1, perPage = 20) {
+  try {
+    const genreClean = genre.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    const gql = `
+      query ($genre: String, $page: Int, $perPage: Int) {
+        Page(page: $page, perPage: $perPage) {
+          media(genre: $genre, type: ANIME, sort: POPULARITY_DESC) {
+            ${MEDIA_FIELDS}
+          }
+        }
+      }
+    `;
+    const data = await gqlQuery(gql, { genre: genreClean, page, perPage });
+    return (data?.Page?.media || []).map(normalise);
+  } catch (err) {
+    console.error('[anilist] getGenreAnime error:', err.message);
+    return [];
+  }
+}
+
 async function getOngoing() {
   return getTrending();
 }
@@ -453,4 +473,5 @@ module.exports = {
   getOngoing,
   getAlternateTitles,
   resolveAnilistId,
+  getGenreAnime,
 };

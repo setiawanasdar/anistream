@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 /**
  * Schedule & Genre routes
@@ -14,6 +14,7 @@ const router   = express.Router();
 const { withFallback }    = require('../utils/fallback');
 const { cacheMiddleware } = require('../middleware/cache');
 const { fallbackOrder }   = require('../config/sources');
+const anilist             = require('../scrapers/anilist');
 
 router.use(cacheMiddleware);
 
@@ -50,10 +51,24 @@ router.get('/genre/:slug', async (req, res, next) => {
 
   try {
     const { data, source } = await withFallback(fallbackOrder, 'getGenreAnime', slug, page);
-    res.json({ success: true, source, data });
-  } catch (err) {
-    next(err);
+    const results = Array.isArray(data) ? data : (data?.results || []);
+    if (results.length > 0) {
+      return res.json({ success: true, source, data: results });
+    }
+  } catch {
+    // Scraper failed, fallback to AniList
   }
+
+  try {
+    const anilistData = await anilist.getGenreAnime(slug, page);
+    if (anilistData && anilistData.length > 0) {
+      return res.json({ success: true, source: 'anilist', data: anilistData });
+    }
+  } catch {
+    // ignore
+  }
+
+  res.json({ success: true, source: 'none', data: [] });
 });
 
 module.exports = router;
