@@ -6,10 +6,15 @@ import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth';
 import AuthModal from './AuthModal';
 
 export default function UserProfileButton() {
-  const { isAuthenticated, user, signOut } = useSupabaseAuth();
+  const { isAuthenticated, user, signOut, isConfigured } = useSupabaseAuth();
   const [modalOpen, setModalOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -21,6 +26,12 @@ export default function UserProfileButton() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  if (!mounted) {
+    return (
+      <div className="w-16 h-7 rounded-xl bg-[#181818] border border-[#2a2a2a] animate-pulse" />
+    );
+  }
 
   if (!isAuthenticated || !user) {
     return (
@@ -44,7 +55,7 @@ export default function UserProfileButton() {
   const initial = displayName.charAt(0).toUpperCase();
 
   return (
-    <div ref={dropdownRef} className="relative">
+    <div ref={dropdownRef} className="relative flex-shrink-0">
       <button
         onClick={() => setDropdownOpen(!dropdownOpen)}
         className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[#181818] hover:bg-[#222] border border-[#333] transition-colors"
@@ -60,7 +71,7 @@ export default function UserProfileButton() {
 
       {/* Dropdown */}
       {dropdownOpen && (
-        <div className="absolute right-0 top-full mt-2 w-56 bg-[#141414] border border-[#262626] rounded-2xl shadow-2xl overflow-hidden z-50 animate-fadeIn">
+        <div className="absolute right-0 top-full mt-2 w-56 bg-[#141414] border border-[#262626] rounded-2xl shadow-2xl overflow-hidden z-[999] animate-fadeIn">
           {/* User info */}
           <div className="p-3.5 border-b border-[#222] bg-[#181818]">
             <div className="flex items-center gap-2.5">

@@ -15,8 +15,11 @@ interface VideoPlayerProps {
 // Domains whose /embed/ URLs are safe to iframe
 const EMBED_SAFE_HOSTS = [
   'filedon.co',
+  'vidhidepro.com',
+  'vidhidepre.com',
   'odvidhide.com',
   'vidhide.com',
+  'vidiade.com',
   'filemoon.sx',
   'filemoon.to',
   'vidplay.site',
@@ -31,7 +34,6 @@ const EMBED_SAFE_HOSTS = [
   'streamwish.com',
   'blogger.com',
   'google.com',
-  // Universal HD Anime players
   'vidlink.pro',
   'smashystream.com',
   '2embed.skin',
@@ -43,7 +45,7 @@ const EMBED_SAFE_HOSTS = [
   'vidsrc.in',
   'vidsrc.net',
   'vidsrc.xyz',
-  'mega.nz',           // only /embed/ paths — see guard below
+  'mega.nz',
 ];
 
 // Domains that BLOCK iframe embedding — never render these
@@ -68,8 +70,16 @@ const BLOCKED_HOSTS = [
 ];
 
 /**
+ * Normalise broken or dead VidHide/Vidiade domains to working mirrors
+ */
+function normalizeStreamUrl(url: string): string {
+  if (!url) return '';
+  return url
+    .replace(/^https?:\/\/(vidiade\.com|vidhide\.com|vidhidepre\.com|odvidhide\.com)\/embed\//i, 'https://vidhidepro.com/embed/');
+}
+
+/**
  * Decide whether a URL can be loaded inside an <iframe> player.
- * Must be an embed/player URL from a safe host, and NOT a download link.
  */
 function isEmbeddable(url: string): boolean {
   if (!url || !url.startsWith('http')) return false;
@@ -81,7 +91,7 @@ function isEmbeddable(url: string): boolean {
     // Hard-block known bad hosts
     if (BLOCKED_HOSTS.some((b) => host.includes(b))) return false;
 
-    // mega.nz: only allow /embed/ paths, never /file/ or /#!
+    // mega.nz: only allow /embed/ paths
     if (host.includes('mega.nz')) {
       return path.startsWith('/embed/') || path.startsWith('/embed#');
     }
@@ -89,7 +99,7 @@ function isEmbeddable(url: string): boolean {
     // If the host is in our safe list → embeddable
     if (EMBED_SAFE_HOSTS.some((s) => host.includes(s))) return true;
 
-    // Generic heuristic: URL contains "embed" or "player" in path
+    // Generic heuristic
     if (path.includes('/embed') || path.includes('/player')) return true;
 
     return false;
@@ -100,7 +110,6 @@ function isEmbeddable(url: string): boolean {
 
 /**
  * Is this URL safe to show at all in the player area?
- * Filters out download-only links and blocked hosts.
  */
 function isPlayableUrl(url: string): boolean {
   if (!url || !url.startsWith('http')) return false;
@@ -110,8 +119,6 @@ function isPlayableUrl(url: string): boolean {
     const path = u.pathname.toLowerCase();
 
     if (BLOCKED_HOSTS.some((b) => host.includes(b))) return false;
-
-    // mega.nz download links (not embed) are not playable in iframe
     if (host.includes('mega.nz') && !path.startsWith('/embed')) return false;
 
     return true;
@@ -119,10 +126,6 @@ function isPlayableUrl(url: string): boolean {
     return false;
   }
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 const QUALITY_ORDER = ['1080p', '720p', '480p', '360p', 'HD'] as const;
 
@@ -133,12 +136,7 @@ function pickBestQuality(streams: { quality: string; url: string }[]): string {
   return streams[0]?.quality ?? 'HD';
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
 export default function VideoPlayer({ servers = [], title, onProgress }: VideoPlayerProps) {
-  // ── normalise all backend formats into { server, streams[] } ──
   const normalizedServers = useMemo(() => {
     if (!Array.isArray(servers)) return [];
     return servers
@@ -166,32 +164,29 @@ export default function VideoPlayer({ servers = [], title, onProgress }: VideoPl
       .filter((s) => s.streams.length > 0);
   }, [servers]);
 
-  // ── state ──
   const [activeServerIdx, setActiveServerIdx] = useState(0);
   const [activeQuality, setActiveQuality] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
   const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Derived
   const currentServer = normalizedServers[activeServerIdx] ?? normalizedServers[0];
   const currentStreams = currentServer?.streams ?? [];
 
-  // When server changes, pick best quality automatically
   useEffect(() => {
     if (currentStreams.length > 0) {
       setActiveQuality(pickBestQuality(currentStreams));
     }
   }, [activeServerIdx, currentStreams.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Resolve the URL to render
   const currentUrl =
     currentStreams.find((s) => s.quality.toUpperCase() === activeQuality.toUpperCase())?.url ??
     currentStreams[0]?.url ??
     '';
 
   const isEmbed = isEmbeddable(currentUrl);
+  const renderedUrl = normalizeStreamUrl(currentUrl);
 
-  // ── progress tracking for native <video> ──
+  // Native progress tracking
   useEffect(() => {
     if (isEmbed || !videoRef.current) return;
     const video = videoRef.current;
@@ -206,7 +201,7 @@ export default function VideoPlayer({ servers = [], title, onProgress }: VideoPl
     };
   }, [isEmbed, onProgress, currentUrl]);
 
-  // ── keyboard shortcuts (native video only) ──
+  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const video = videoRef.current;
@@ -240,11 +235,6 @@ export default function VideoPlayer({ servers = [], title, onProgress }: VideoPl
     return () => document.removeEventListener('keydown', handler);
   }, [isEmbed]);
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // RENDER
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  // ── No servers at all → placeholder ──
   if (!normalizedServers.length || !currentUrl) {
     return (
       <div className="video-container flex items-center justify-center bg-black aspect-video rounded-xl overflow-hidden border border-[#222]">
@@ -266,11 +256,12 @@ export default function VideoPlayer({ servers = [], title, onProgress }: VideoPl
       <div className="video-container relative aspect-video bg-black">
         {isEmbed ? (
           <iframe
-            key={currentUrl}
-            src={currentUrl}
+            key={renderedUrl}
+            src={renderedUrl}
             title={title}
             allowFullScreen
-            allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+            referrerPolicy="no-referrer"
+            allow="autoplay; fullscreen; picture-in-picture; encrypted-media; accelerometer; gyroscope"
             className="w-full h-full border-0 absolute inset-0"
           />
         ) : currentUrl.match(/\.(mp4|webm|ogg|m3u8)(\?|$)/i) ? (
@@ -285,13 +276,13 @@ export default function VideoPlayer({ servers = [], title, onProgress }: VideoPl
             Browser Anda tidak mendukung pemutar video.
           </video>
         ) : (
-          /* Fallback: treat unknown URLs as iframe embeds rather than downloads */
           <iframe
-            key={currentUrl}
-            src={currentUrl}
+            key={renderedUrl}
+            src={renderedUrl}
             title={title}
             allowFullScreen
-            allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+            referrerPolicy="no-referrer"
+            allow="autoplay; fullscreen; picture-in-picture; encrypted-media; accelerometer; gyroscope"
             className="w-full h-full border-0 absolute inset-0"
           />
         )}
@@ -299,8 +290,7 @@ export default function VideoPlayer({ servers = [], title, onProgress }: VideoPl
 
       {/* ── Controls Panel ── */}
       <div className="bg-[#0d0d0d] border-t border-[#1a1a1a] p-4 space-y-4">
-
-        {/* ── Server Selector (always visible) ── */}
+        {/* Server Selector */}
         <div>
           <p className="text-gray-500 text-[11px] mb-2 uppercase tracking-wider font-semibold flex items-center gap-1.5">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -325,7 +315,7 @@ export default function VideoPlayer({ servers = [], title, onProgress }: VideoPl
           </div>
         </div>
 
-        {/* ── Quality / Resolution Selector (always visible) ── */}
+        {/* Quality Selector */}
         <div>
           <p className="text-gray-500 text-[11px] mb-2 uppercase tracking-wider font-semibold flex items-center gap-1.5">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -350,7 +340,7 @@ export default function VideoPlayer({ servers = [], title, onProgress }: VideoPl
           </div>
         </div>
 
-        {/* ── Now Playing info ── */}
+        {/* Now Playing info */}
         <div className="flex items-center gap-2 pt-1 border-t border-[#1a1a1a]">
           <span className="relative flex h-2.5 w-2.5">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -363,7 +353,6 @@ export default function VideoPlayer({ servers = [], title, onProgress }: VideoPl
           </p>
         </div>
 
-        {/* ── Keyboard shortcuts ── */}
         {!isEmbed && (
           <p className="text-gray-600 text-[10px]">
             Pintasan: Spasi=Play/Pause · F=Fullscreen · M=Mute · ←/→=±10 detik
