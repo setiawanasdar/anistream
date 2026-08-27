@@ -37,25 +37,35 @@ export default function MalAuthModal({ isOpen, onClose }: MalAuthModalProps) {
     sessionStorage.setItem('mal_code_verifier', verifier);
     setCodeVerifierInput(verifier);
 
-    // MyAnimeList OAuth PKCE Authorization URL
+    // MyAnimeList OAuth PKCE Authorization URL (open in full new tab to avoid popup cookie loops)
     const authUrl = `https://myanimelist.net/v1/oauth2/authorize?response_type=code&client_id=${clientId}&code_challenge=${verifier}&code_challenge_method=plain`;
-    window.open(authUrl, '_blank', 'width=600,height=700');
+    window.open(authUrl, '_blank');
   };
 
   const handleExchangeCode = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     const verifier = codeVerifierInput || sessionStorage.getItem('mal_code_verifier') || '';
-    if (!authCodeInput.trim()) {
+    let rawCode = authCodeInput.trim();
+
+    // Auto-extract code if user pastes the entire redirect URL (e.g. https://...?code=ABC123)
+    if (rawCode.includes('code=')) {
+      const match = rawCode.match(/[?&]code=([^&]+)/);
+      if (match && match[1]) {
+        rawCode = decodeURIComponent(match[1]);
+      }
+    }
+
+    if (!rawCode) {
       setError('Masukkan Authorization Code yang didapat dari halaman MyAnimeList.');
       return;
     }
     if (!verifier) {
-      setError('Code verifier tidak ditemukan. Silakan klik "Buka Halaman Login MAL" terlebih dahulu.');
+      setError('Code verifier tidak ditemukan. Silakan klik "Buka Halaman Otorisasi MAL" terlebih dahulu.');
       return;
     }
 
-    const res = await loginWithCode(authCodeInput.trim(), verifier, clientId);
+    const res = await loginWithCode(rawCode, verifier, clientId);
     if (res.success) {
       setSuccess(true);
       setTimeout(() => {
@@ -154,15 +164,30 @@ export default function MalAuthModal({ isOpen, onClose }: MalAuthModalProps) {
 
           {activeTab === 'oauth' ? (
             <div className="space-y-4">
+              {/* Tip to avoid looping */}
               <div className="bg-[#181818] p-3.5 rounded-xl border border-[#262626] text-xs text-gray-300 space-y-2">
-                <p className="font-semibold text-white">Langkah Otorisasi:</p>
-                <ol className="list-decimal list-inside space-y-1 text-gray-400">
-                  <li>Klik tombol <span className="text-[#4a72d3] font-medium">&quot;Buka Halaman Login MAL&quot;</span> di bawah.</li>
-                  <li>Login ke akun MyAnimeList dan klik <span className="text-white">Allow</span>.</li>
-                  <li>Salin nilai parameter <code className="text-[#a5b4fc] bg-black/40 px-1 py-0.5 rounded">code=...</code> dari URL browser dan tempel di bawah.</li>
-                </ol>
+                <div className="flex items-center gap-1.5 text-amber-400 font-semibold">
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>Tips agar tidak looping/ngulang di halaman login MAL:</span>
+                </div>
+                <p className="text-gray-400 text-[11px] leading-relaxed">
+                  Pastikan browser Anda sudah dalam keadaan <strong>Login di situs MyAnimeList</strong> terlebih dahulu agar halaman otorisasi langsung memunculkan tombol <strong>Allow</strong> tanpa perlu ketik username/password lagi.
+                </p>
+                <div className="pt-1">
+                  <a
+                    href="https://myanimelist.net/login.php"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] text-[#8ba7f0] hover:underline font-semibold"
+                  >
+                    Buka situs MyAnimeList di tab baru untuk Login ↗
+                  </a>
+                </div>
               </div>
 
+              {/* Step 1 Button */}
               <button
                 type="button"
                 onClick={handleStartOAuth}
@@ -171,19 +196,19 @@ export default function MalAuthModal({ isOpen, onClose }: MalAuthModalProps) {
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>
-                1. Buka Halaman Login MAL
+                1. Buka Halaman Otorisasi & Klik &quot;Allow&quot;
               </button>
 
-              <form onSubmit={handleExchangeCode} className="space-y-3 pt-2">
+              <form onSubmit={handleExchangeCode} className="space-y-3 pt-1">
                 <div>
                   <label className="block text-xs font-medium text-gray-400 mb-1">
-                    2. Tempel Authorization Code di sini:
+                    2. Salin seluruh link URL browser atau kodenya, lalu tempel di sini:
                   </label>
                   <input
                     type="text"
                     value={authCodeInput}
                     onChange={(e) => setAuthCodeInput(e.target.value)}
-                    placeholder="Contoh: eyJhbGciOiJSUzI1NiIs..."
+                    placeholder="Contoh: https://localhost/?code=... atau kodenya saja"
                     className="w-full bg-[#181818] border border-[#333] focus:border-[#2e51a2] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-600 focus:outline-none"
                   />
                 </div>
