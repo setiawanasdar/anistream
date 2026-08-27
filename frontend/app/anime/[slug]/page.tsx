@@ -5,11 +5,12 @@ import { useParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import type { AnimeDetail, Episode } from '@/lib/api';
+import type { AnimeDetail, Episode, Anime } from '@/lib/api';
 import GenreTag from '@/components/GenreTag';
 import EpisodeList from '@/components/EpisodeList';
 import WatchlistButton from '@/components/WatchlistButton';
 import SourceBadge from '@/components/SourceBadge';
+import AnimeCard from '@/components/AnimeCard';
 import { formatRating, normalizeStatus, getStatusColor } from '@/lib/utils';
 
 // ─── Skeleton ──────────────────────────────────────────────────────────────────
@@ -44,6 +45,7 @@ export default function AnimeDetailPage() {
   const params = useParams();
   const slug = params?.slug as string;
   const [anime, setAnime] = useState<AnimeDetail | null>(null);
+  const [relatedAnime, setRelatedAnime] = useState<Anime[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
@@ -55,6 +57,22 @@ export default function AnimeDetailPage() {
     try {
       const res = await api.getAnimeDetail(slug);
       setAnime(res.data);
+
+      // Fetch related anime based on primary genre
+      if (res.data?.genres && res.data.genres.length > 0) {
+        const primaryGenre = res.data.genres[0].toLowerCase().replace(/\s+/g, '-');
+        try {
+          const relatedRes = await api.getGenreAnime(primaryGenre);
+          const relatedList = Array.isArray(relatedRes.data) ? relatedRes.data : [];
+          setRelatedAnime(
+            relatedList
+              .filter((a) => a.slug !== slug && a.title !== res.data.title)
+              .slice(0, 8)
+          );
+        } catch {
+          // ignore related error
+        }
+      }
     } catch {
       setError('Gagal memuat detail anime. Coba lagi nanti.');
     } finally {
@@ -108,7 +126,7 @@ export default function AnimeDetailPage() {
       })
     : [];
 
-  // If episodes array is still empty but total episode count is known (e.g. Naruto, Bleach, Steins;Gate)
+  // Total episode count expansion fallback
   if (episodes.length === 0 && anime.episodes) {
     const countMatch = String(anime.episodes).match(/\d+/);
     const totalCount = countMatch ? Math.min(parseInt(countMatch[0], 10), 2000) : 0;
@@ -124,7 +142,7 @@ export default function AnimeDetailPage() {
     }
   }
 
-  // Fallback: If still 0, provide Episode 1 button at least
+  // Fallback: If still 0, provide Episode 1
   if (episodes.length === 0) {
     const baseSlug = slug.replace(/-sub-indo$/i, '');
     episodes.push({
@@ -154,11 +172,11 @@ export default function AnimeDetailPage() {
       </div>
 
       {/* Main content */}
-      <div className="max-w-screen-xl mx-auto px-4 sm:px-6 -mt-32 relative z-10 pb-10">
+      <div className="max-w-screen-xl mx-auto px-4 sm:px-6 -mt-32 relative z-10 pb-12">
         <div className="flex flex-col sm:flex-row gap-6">
           {/* Poster */}
           <div className="flex-shrink-0 w-36 sm:w-44 mx-auto sm:mx-0">
-            <div className="relative w-full aspect-[2/3] rounded-xl overflow-hidden border-2 border-[#333] shadow-2xl">
+            <div className="relative w-full aspect-[2/3] rounded-2xl overflow-hidden border-2 border-[#333] shadow-2xl">
               <Image
                 src={anime.poster}
                 alt={anime.title}
@@ -183,17 +201,17 @@ export default function AnimeDetailPage() {
             {/* Badges */}
             <div className="flex flex-wrap items-center gap-2 mt-3">
               {anime.status && (
-                <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${getStatusColor(anime.status)}`}>
+                <span className={`text-xs px-2.5 py-1 rounded-full border font-semibold ${getStatusColor(anime.status)}`}>
                   {normalizeStatus(anime.status)}
                 </span>
               )}
               {anime.type && (
-                <span className="text-xs px-2.5 py-1 rounded-full border bg-primary/20 text-primary-light border-primary/30 font-medium">
+                <span className="text-xs px-2.5 py-1 rounded-full border bg-primary/20 text-primary-light border-primary/30 font-semibold">
                   {anime.type}
                 </span>
               )}
               {anime.rating && (
-                <span className="text-xs flex items-center gap-1 text-yellow-400 font-medium">
+                <span className="text-xs flex items-center gap-1 text-yellow-400 font-bold bg-yellow-950/30 px-2.5 py-1 rounded-full border border-yellow-800/40">
                   ⭐ {formatRating(anime.rating)}
                 </span>
               )}
@@ -237,7 +255,7 @@ export default function AnimeDetailPage() {
                 {synopsis.length > 200 && (
                   <button
                     onClick={() => setSynopsisExpanded(!synopsisExpanded)}
-                    className="text-primary-light text-xs mt-1 hover:text-primary transition-colors"
+                    className="text-primary-light text-xs mt-1 font-bold hover:underline transition-colors"
                   >
                     {synopsisExpanded ? 'Tampilkan lebih sedikit' : 'Selengkapnya'}
                   </button>
@@ -246,11 +264,11 @@ export default function AnimeDetailPage() {
             )}
 
             {/* Actions */}
-            <div className="flex flex-wrap items-center gap-3 mt-5">
+            <div className="flex flex-wrap items-center gap-3 mt-6">
               {firstEpisode && (
                 <Link
                   href={`/episode/${firstEpisode.slug}`}
-                  className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white font-bold px-5 py-2.5 rounded-lg transition-colors text-sm"
+                  className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white font-bold px-5 py-2.5 rounded-xl transition-all hover:scale-105 shadow-lg shadow-primary/30 text-sm"
                 >
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M8 5v14l11-7z" />
@@ -265,9 +283,44 @@ export default function AnimeDetailPage() {
         </div>
 
         {/* Episode list */}
-        <div className="mt-8">
-          <EpisodeList episodes={episodes} animeSlug={slug} />
+        <div className="mt-10">
+          <EpisodeList
+            episodes={episodes}
+            animeSlug={slug}
+            animeTitle={anime.title}
+            poster={anime.poster}
+          />
         </div>
+
+        {/* ── Related Anime Recommendations ── */}
+        {relatedAnime.length > 0 && (
+          <div className="mt-12 pt-8 border-t border-[#1e1e1e]">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-1.5 h-6 bg-primary rounded-full" />
+                <h3 className="text-white text-lg sm:text-xl font-bold">
+                  Anime Serupa & Rekomendasi Terkait
+                </h3>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4">
+              {relatedAnime.map((rel) => (
+                <AnimeCard
+                  key={rel.id || rel.slug}
+                  id={rel.id}
+                  title={rel.title}
+                  slug={rel.slug}
+                  poster={rel.poster}
+                  type={rel.type}
+                  status={rel.status}
+                  episodes={rel.episodes}
+                  rating={rel.rating}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

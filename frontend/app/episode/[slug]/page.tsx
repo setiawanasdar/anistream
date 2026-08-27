@@ -124,6 +124,8 @@ export default function EpisodePage() {
             servers={episode.servers || []}
             title={episode.title || ''}
             onProgress={handleProgress}
+            prevEpisodeSlug={episode.prev_episode || episode.prevEpisode}
+            nextEpisodeSlug={episode.next_episode || episode.nextEpisode}
           />
         </div>
       </div>
@@ -234,6 +236,7 @@ export default function EpisodePage() {
                 episodes={allEpisodes}
                 currentSlug={slug}
                 animeSlug={episode.animeSlug || ''}
+                animeTitle={episode.anime || episode.title || ''}
               />
             )}
           </div>
