@@ -6,7 +6,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import type { Anime } from '@/lib/api';
 import Image from 'next/image';
-import MalProfileButton from './MalProfileButton';
+import UserProfileButton from './UserProfileButton';
 
 export default function Navbar() {
   const router = useRouter();
@@ -202,8 +202,8 @@ export default function Navbar() {
           )}
         </div>
 
-        {/* MyAnimeList Connect / Profile Button */}
-        <MalProfileButton />
+        {/* Supabase User Profile / Login Button */}
+        <UserProfileButton />
 
         {/* Mobile hamburger */}
         <button

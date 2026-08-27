@@ -2,12 +2,11 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
-import { useMalAuth } from '@/lib/hooks/useMalAuth';
-import MalAuthModal from './MalAuthModal';
+import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth';
+import AuthModal from './AuthModal';
 
-export default function MalProfileButton() {
-  const { isAuthenticated, user, logout } = useMalAuth();
+export default function UserProfileButton() {
+  const { isAuthenticated, user, signOut } = useSupabaseAuth();
   const [modalOpen, setModalOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -28,19 +27,21 @@ export default function MalProfileButton() {
       <>
         <button
           onClick={() => setModalOpen(true)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#2e51a2]/20 hover:bg-[#2e51a2]/30 border border-[#2e51a2]/50 text-[#8ba7f0] text-xs font-semibold transition-all hover:scale-105"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary hover:bg-primary-dark text-white text-xs font-bold transition-all shadow-md shadow-primary/20 hover:scale-105"
         >
-          <div className="w-4 h-4 rounded bg-[#2e51a2] flex items-center justify-center text-[10px] text-white font-black">
-            M
-          </div>
-          <span className="hidden sm:inline">Hubungkan MAL</span>
-          <span className="sm:hidden">MAL</span>
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          <span>Masuk</span>
         </button>
 
-        <MalAuthModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
+        <AuthModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
       </>
     );
   }
+
+  const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
+  const initial = displayName.charAt(0).toUpperCase();
 
   return (
     <div ref={dropdownRef} className="relative">
@@ -48,26 +49,13 @@ export default function MalProfileButton() {
         onClick={() => setDropdownOpen(!dropdownOpen)}
         className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[#181818] hover:bg-[#222] border border-[#333] transition-colors"
       >
-        <div className="relative w-6 h-6 rounded-full overflow-hidden bg-[#2e51a2] flex-shrink-0">
-          {user.picture ? (
-            <Image
-              src={user.picture}
-              alt={user.name}
-              fill
-              sizes="24px"
-              className="object-cover"
-              unoptimized
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center font-bold text-white text-[10px]">
-              {user.name.charAt(0).toUpperCase()}
-            </div>
-          )}
+        <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center font-bold text-white text-[11px] flex-shrink-0">
+          {initial}
         </div>
         <span className="text-white text-xs font-medium max-w-[90px] truncate hidden sm:inline">
-          {user.name}
+          {displayName}
         </span>
-        <span className="w-2 h-2 rounded-full bg-emerald-500" title="Tersambung ke MAL" />
+        <span className="w-2 h-2 rounded-full bg-emerald-500" title="Tersambung ke Supabase Cloud" />
       </button>
 
       {/* Dropdown */}
@@ -76,27 +64,15 @@ export default function MalProfileButton() {
           {/* User info */}
           <div className="p-3.5 border-b border-[#222] bg-[#181818]">
             <div className="flex items-center gap-2.5">
-              <div className="relative w-9 h-9 rounded-full overflow-hidden bg-[#2e51a2] flex-shrink-0">
-                {user.picture ? (
-                  <Image
-                    src={user.picture}
-                    alt={user.name}
-                    fill
-                    sizes="36px"
-                    className="object-cover"
-                    unoptimized
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center font-bold text-white text-xs">
-                    {user.name.charAt(0).toUpperCase()}
-                  </div>
-                )}
+              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center font-bold text-white text-xs flex-shrink-0">
+                {initial}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-white text-xs font-bold truncate">{user.name}</p>
-                <p className="text-[#8ba7f0] text-[10px] flex items-center gap-1 font-medium">
+                <p className="text-white text-xs font-bold truncate">{displayName}</p>
+                <p className="text-gray-400 text-[10px] truncate">{user.email}</p>
+                <p className="text-emerald-400 text-[9px] flex items-center gap-1 font-medium mt-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                  MyAnimeList Connected
+                  Cloud Sync Aktif
                 </p>
               </div>
             </div>
@@ -112,20 +88,20 @@ export default function MalProfileButton() {
               <svg className="w-4 h-4 text-primary-light" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
               </svg>
-              Watchlist & Riwayat MAL
+              Watchlist & Riwayat Nonton
             </Link>
 
             <button
               onClick={() => {
                 setDropdownOpen(false);
-                logout();
+                signOut();
               }}
               className="w-full flex items-center gap-2.5 px-3 py-2 text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded-xl transition-colors text-left"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
               </svg>
-              Putuskan Sambungan
+              Keluar Akun
             </button>
           </div>
         </div>
