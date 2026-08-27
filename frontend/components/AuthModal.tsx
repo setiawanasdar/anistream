@@ -65,10 +65,10 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-      <div className="relative w-full max-w-md bg-[#121212] border border-[#2a2a2a] rounded-2xl shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#222] bg-[#161616]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-sm overflow-y-auto animate-fadeIn">
+      <div className="relative w-full max-w-md my-auto bg-[#121212] border border-[#2a2a2a] rounded-2xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+        {/* Header - Fixed at top */}
+        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-[#222] bg-[#161616] flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center font-black text-white text-sm">
               A
@@ -77,7 +77,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
               <h3 className="text-white font-bold text-base">
                 {isRegister ? 'Daftar Akun AniStream' : 'Masuk ke AniStream'}
               </h3>
-              <p className="text-gray-400 text-xs">Simpan watchlist & riwayat nonton di semua perangkat</p>
+              <p className="text-gray-400 text-xs">Simpan watchlist & riwayat nonton di cloud</p>
             </div>
           </div>
           <button
@@ -90,8 +90,8 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-4">
+        {/* Scrollable Content Body */}
+        <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
           {!isConfigured && (
             <div className="bg-amber-950/40 border border-amber-800/60 rounded-xl p-3.5 text-xs text-amber-200 space-y-1">
               <p className="font-bold flex items-center gap-1">
