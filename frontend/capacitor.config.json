@@ -1,0 +1,26 @@
+{
+  "appId": "com.anistream.app",
+  "appName": "AniStream",
+  "webDir": "public",
+  "bundledWebRuntime": false,
+  "server": {
+    "url": "https://anistream-zeta.vercel.app",
+    "cleartext": true,
+    "allowNavigation": [
+      "*.vercel.app",
+      "*.onrender.com",
+      "*.supabase.co",
+      "*.otakudesu.*",
+      "*.samehadaku.*",
+      "*.filedon.*",
+      "*.vidhide*.*",
+      "*.mega.nz",
+      "*.google.com"
+    ]
+  },
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": true
+  }
+}

@@ -1,0 +1,60 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    name: Build AniStream APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+
+      - name: Sync Capacitor Android
+        run: |
+          cd frontend
+          npx cap sync android
+
+      - name: Make Gradle executable
+        run: |
+          cd frontend/android
+          chmod +x gradlew
+
+      - name: Build Android APK (Debug & Release)
+        run: |
+          cd frontend/android
+          ./gradlew assembleDebug
+
+      - name: Rename APK
+        run: |
+          mkdir -p build-output
+          cp frontend/android/app/build/outputs/apk/debug/app-debug.apk build-output/AniStream.apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AniStream-APK
+          path: build-output/AniStream.apk
+          retention-days: 30
