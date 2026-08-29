@@ -96,6 +96,7 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<ApiRespo
 export const api = {
   getOngoing: () => fetchApi<Anime[]>(`${API_BASE}/api/anime/ongoing`),
   getComplete: () => fetchApi<Anime[]>(`${API_BASE}/api/anime/complete`),
+  getMovies: (page = 1) => fetchApi<Anime[]>(`${API_BASE}/api/anime/movies?page=${page}`),
   getPopular: () => fetchApi<Anime[]>(`${API_BASE}/api/anime/popular`),
   searchAnime: (q: string) =>
     fetchApi<Anime[]>(`${API_BASE}/api/anime/search?q=${encodeURIComponent(q)}`),

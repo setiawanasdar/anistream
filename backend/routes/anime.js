@@ -54,6 +54,19 @@ router.get('/complete', async (req, res, next) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/anime/movies
+// ---------------------------------------------------------------------------
+router.get('/movies', async (req, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const { data, source } = await withFallback(fallbackOrder, 'getMovies', page);
+    res.json({ success: true, source, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/anime/popular
 // ---------------------------------------------------------------------------
 router.get('/popular', async (req, res, next) => {

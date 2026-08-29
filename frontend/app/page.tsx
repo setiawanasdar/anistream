@@ -117,6 +117,7 @@ function HeroSkeleton() {
 export default function HomePage() {
   const [ongoing, setOngoing] = useState<Anime[]>([]);
   const [complete, setComplete] = useState<Anime[]>([]);
+  const [movies, setMovies] = useState<Anime[]>([]);
   const [popular, setPopular] = useState<Anime[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -125,10 +126,11 @@ export default function HomePage() {
     setLoading(true);
     setError(null);
     try {
-      const [ongoingRes, completeRes, popularRes] = await Promise.allSettled([
+      const [ongoingRes, completeRes, popularRes, moviesRes] = await Promise.allSettled([
         api.getOngoing(),
         api.getComplete(),
         api.getPopular(),
+        api.getMovies(),
       ]);
 
       if (ongoingRes.status === 'fulfilled') {
@@ -140,12 +142,16 @@ export default function HomePage() {
       if (popularRes.status === 'fulfilled') {
         setPopular(Array.isArray(popularRes.value.data) ? popularRes.value.data : []);
       }
+      if (moviesRes.status === 'fulfilled') {
+        setMovies(Array.isArray(moviesRes.value.data) ? moviesRes.value.data : []);
+      }
 
       // Error if all failed
       if (
         ongoingRes.status === 'rejected' &&
         completeRes.status === 'rejected' &&
-        popularRes.status === 'rejected'
+        popularRes.status === 'rejected' &&
+        moviesRes.status === 'rejected'
       ) {
         setError('Gagal memuat data. Periksa koneksi internet Anda.');
       }
@@ -217,6 +223,16 @@ export default function HomePage() {
           loading={loading}
           seeAllHref="/search?sort=popular"
         />
+
+        {/* Anime Movie */}
+        {movies.length > 0 && (
+          <AnimeRow
+            title="Anime Movie"
+            animes={movies}
+            loading={loading}
+            seeAllHref="/search?type=Movie"
+          />
+        )}
 
         {/* Complete */}
         <AnimeRow
