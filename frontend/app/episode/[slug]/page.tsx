@@ -117,9 +117,9 @@ export default function EpisodePage() {
 
   return (
     <div>
-      {/* Video player - full width, black bg */}
+      {/* Video player - full width on mobile, slight padding on desktop */}
       <div className="bg-black w-full">
-        <div className="max-w-screen-2xl mx-auto px-2 sm:px-4 py-3">
+        <div className="max-w-screen-2xl mx-auto px-0 sm:px-4 py-0 sm:py-3">
           <VideoPlayer
             servers={episode.servers || []}
             title={episode.title || ''}
