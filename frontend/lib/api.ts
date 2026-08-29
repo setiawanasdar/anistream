@@ -98,6 +98,7 @@ export const api = {
   getComplete: () => fetchApi<Anime[]>(`${API_BASE}/api/anime/complete`),
   getMovies: (page = 1) => fetchApi<Anime[]>(`${API_BASE}/api/anime/movies?page=${page}`),
   getPopular: () => fetchApi<Anime[]>(`${API_BASE}/api/anime/popular`),
+  getCatalog: () => fetchApi<Anime[]>(`${API_BASE}/api/anime/catalog`),
   searchAnime: (q: string) =>
     fetchApi<Anime[]>(`${API_BASE}/api/anime/search?q=${encodeURIComponent(q)}`),
   getAnimeDetail: (slug: string) =>

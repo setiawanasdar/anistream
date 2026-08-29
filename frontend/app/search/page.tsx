@@ -16,131 +16,107 @@ const SORTS = [
   { value: 'az', label: 'Nama (A-Z)' },
 ];
 
-const ITEMS_PER_PAGE = 24;
+const ITEMS_PER_PAGE = 30;
 
 function SearchContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const initialQuery = searchParams.get('q') ?? '';
   const initialType = searchParams.get('type') ?? 'Semua';
-  const initialStatus = searchParams.get('status') ?? 'Semua';
 
   const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<Anime[]>([]);
-  const [exploreCatalog, setExploreCatalog] = useState<Anime[]>([]);
+  // Master catalog — loaded once from /api/anime/catalog (200+ items)
+  const [catalog, setCatalog] = useState<Anime[]>([]);
+  // Extra items appended per Load More
+  const [extraItems, setExtraItems] = useState<Anime[]>([]);
   const [genres, setGenres] = useState<{ name: string; slug: string }[]>([]);
   const [selectedGenre, setSelectedGenre] = useState('Semua');
   const [genrePage, setGenrePage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [genreLoading, setGenreLoading] = useState(false);
+  const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [filterType, setFilterType] = useState(initialType);
-  const [filterStatus, setFilterStatus] = useState(initialStatus);
+  const [filterStatus, setFilterStatus] = useState('Semua');
   const [sortBy, setSortBy] = useState('relevance');
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Load rich explore catalog (Ongoing + Popular + Complete + Movies + Top Genres)
+  // ── Load full catalog from /api/anime/catalog (200+ anime in one shot) ──
   useEffect(() => {
-    // 1. Load genres
+    // Load genres in parallel
     api.getGenres().then((res) => {
-      if (Array.isArray(res.data)) {
-        setGenres(res.data);
-      }
+      if (Array.isArray(res.data)) setGenres(res.data);
     }).catch(() => {});
 
-    // 2. Fetch comprehensive multi-source catalog concurrently
-    const loadFullCatalog = async () => {
+    const loadCatalog = async () => {
       setLoading(true);
       try {
-        const [ongoingRes, popularRes, completeRes, moviesRes, actionRes, fantasyRes] = await Promise.allSettled([
+        // Primary: single /catalog call that aggregates 200+ items server-side
+        const catalogRes = await api.getCatalog();
+        if (Array.isArray(catalogRes.data) && catalogRes.data.length > 10) {
+          setCatalog(catalogRes.data);
+          setCatalogLoaded(true);
+          setLoading(false);
+          return;
+        }
+      } catch { /* ignore */ }
+
+      // Fallback: parallel individual calls
+      try {
+        const [ongoingRes, completeRes, moviesRes, popularRes] = await Promise.allSettled([
           api.getOngoing(),
-          api.getPopular(),
           api.getComplete(),
           api.getMovies(1),
-          api.getGenreAnime('action', 1),
-          api.getGenreAnime('fantasy', 1),
+          api.getPopular(),
         ]);
 
-        const o = ongoingRes.status === 'fulfilled' && Array.isArray(ongoingRes.value.data) ? ongoingRes.value.data : [];
-        const p = popularRes.status === 'fulfilled' && Array.isArray(popularRes.value.data) ? popularRes.value.data : [];
-        const c = completeRes.status === 'fulfilled' && Array.isArray(completeRes.value.data) ? completeRes.value.data : [];
-        const m = moviesRes.status === 'fulfilled' && Array.isArray(moviesRes.value.data) ? moviesRes.value.data : [];
-        const act = actionRes.status === 'fulfilled' && Array.isArray(actionRes.value.data) ? actionRes.value.data : [];
-        const fan = fantasyRes.status === 'fulfilled' && Array.isArray(fantasyRes.value.data) ? fantasyRes.value.data : [];
+        const lists = [ongoingRes, completeRes, moviesRes, popularRes]
+          .filter((r) => r.status === 'fulfilled')
+          .map((r) => (r as PromiseFulfilledResult<{ data: Anime[] }>).value.data)
+          .filter(Array.isArray);
 
         const map = new Map<string, Anime>();
-        [...o, ...p, ...c, ...m, ...act, ...fan].forEach((item) => {
-          if (item && (item.slug || item.id)) {
-            const key = (item.slug || item.id).toLowerCase();
-            if (!map.has(key)) {
-              map.set(key, item);
-            }
-          }
+        lists.flat().forEach((item) => {
+          if (!item?.slug && !item?.id) return;
+          const key = (item.slug || item.id).toLowerCase();
+          if (!map.has(key)) map.set(key, item);
         });
-
-        setExploreCatalog(Array.from(map.values()));
-      } catch {
-        // ignore
-      } finally {
+        setCatalog(Array.from(map.values()));
+        setCatalogLoaded(true);
+      } catch { /* ignore */ } finally {
         setLoading(false);
       }
     };
 
-    loadFullCatalog();
+    loadCatalog();
   }, []);
 
-  // When format/type is changed to Movie / OVA / Special, fetch dedicated items if empty
-  const handleTypeChange = async (t: string) => {
-    setFilterType(t);
-    setVisibleCount(ITEMS_PER_PAGE);
+  // ── When Movie tab selected, ensure we have movies in the catalog ──
+  const ensureMovies = useCallback(async () => {
+    try {
+      const res = await api.getMovies(1);
+      const movies = Array.isArray(res.data) ? res.data : [];
+      if (movies.length === 0) return;
+      setCatalog((prev) => {
+        const map = new Map<string, Anime>(prev.map((a) => [(a.slug || a.id).toLowerCase(), a]));
+        movies.forEach((item) => {
+          const key = (item.slug || item.id).toLowerCase();
+          if (!map.has(key)) map.set(key, item);
+        });
+        return Array.from(map.values());
+      });
+    } catch { /* ignore */ }
+  }, []);
 
-    if (t === 'Movie') {
-      try {
-        const res = await api.getMovies(1);
-        const list = Array.isArray(res.data) ? res.data : [];
-        if (list.length > 0) {
-          setExploreCatalog((prev) => {
-            const map = new Map<string, Anime>();
-            list.forEach((item) => map.set((item.slug || item.id).toLowerCase(), item));
-            prev.forEach((item) => {
-              const key = (item.slug || item.id).toLowerCase();
-              if (!map.has(key)) map.set(key, item);
-            });
-            return Array.from(map.values());
-          });
-        }
-      } catch {
-        // ignore
-      }
-    } else if (['OVA', 'ONA', 'Special'].includes(t)) {
-      try {
-        const res = await api.searchAnime(t);
-        const list = Array.isArray(res.data) ? res.data : [];
-        if (list.length > 0) {
-          setExploreCatalog((prev) => {
-            const map = new Map<string, Anime>();
-            list.forEach((item) => map.set((item.slug || item.id).toLowerCase(), { ...item, type: t }));
-            prev.forEach((item) => {
-              const key = (item.slug || item.id).toLowerCase();
-              if (!map.has(key)) map.set(key, item);
-            });
-            return Array.from(map.values());
-          });
-        }
-      } catch {
-        // ignore
-      }
-    }
-  };
-
-  // When a genre is specifically selected, fetch genre items directly
-  const handleGenreChange = async (genreName: string) => {
+  // ── Genre fetch (on-demand when user picks a genre) ──
+  const handleGenreChange = useCallback(async (genreName: string) => {
     setSelectedGenre(genreName);
     setVisibleCount(ITEMS_PER_PAGE);
     setGenrePage(1);
-
+    setExtraItems([]);
     if (genreName === 'Semua') return;
 
     const matched = genres.find((g) => g.name === genreName || g.slug === genreName);
@@ -150,25 +126,14 @@ function SearchContent() {
     try {
       const res = await api.getGenreAnime(genreSlug, 1);
       const list = Array.isArray(res.data) ? res.data : [];
-      if (list.length > 0) {
-        setExploreCatalog((prev) => {
-          const map = new Map<string, Anime>();
-          list.forEach((item) => map.set((item.slug || item.id).toLowerCase(), item));
-          prev.forEach((item) => {
-            const key = (item.slug || item.id).toLowerCase();
-            if (!map.has(key)) map.set(key, item);
-          });
-          return Array.from(map.values());
-        });
-      }
-    } catch {
-      // ignore
-    } finally {
+      setExtraItems(list);
+    } catch { /* ignore */ } finally {
       setGenreLoading(false);
     }
-  };
+  }, [genres]);
 
-  const handleLoadMore = async () => {
+  // ── Load More ──
+  const handleLoadMore = useCallback(async () => {
     if (selectedGenre !== 'Semua') {
       const matched = genres.find((g) => g.name === selectedGenre || g.slug === selectedGenre);
       const genreSlug = matched ? matched.slug : selectedGenre.toLowerCase().replace(/\s+/g, '-');
@@ -179,16 +144,16 @@ function SearchContent() {
         const list = Array.isArray(res.data) ? res.data : [];
         if (list.length > 0) {
           setGenrePage(nextPage);
-          setExploreCatalog((prev) => {
-            const map = new Map<string, Anime>();
-            prev.forEach((item) => map.set((item.slug || item.id).toLowerCase(), item));
-            list.forEach((item) => map.set((item.slug || item.id).toLowerCase(), item));
+          setExtraItems((prev) => {
+            const map = new Map<string, Anime>(prev.map((a) => [(a.slug || a.id).toLowerCase(), a]));
+            list.forEach((item) => {
+              const key = (item.slug || item.id).toLowerCase();
+              if (!map.has(key)) map.set(key, item);
+            });
             return Array.from(map.values());
           });
         }
-      } catch {
-        // ignore
-      } finally {
+      } catch { /* ignore */ } finally {
         setGenreLoading(false);
       }
     } else if (filterType === 'Movie') {
@@ -199,22 +164,34 @@ function SearchContent() {
         const list = Array.isArray(res.data) ? res.data : [];
         if (list.length > 0) {
           setGenrePage(nextPage);
-          setExploreCatalog((prev) => {
-            const map = new Map<string, Anime>();
-            prev.forEach((item) => map.set((item.slug || item.id).toLowerCase(), item));
-            list.forEach((item) => map.set((item.slug || item.id).toLowerCase(), item));
+          setExtraItems((prev) => {
+            const map = new Map<string, Anime>(prev.map((a) => [(a.slug || a.id).toLowerCase(), a]));
+            list.forEach((item) => {
+              const key = (item.slug || item.id).toLowerCase();
+              if (!map.has(key)) map.set(key, item);
+            });
             return Array.from(map.values());
           });
         }
-      } catch {
-        // ignore
-      } finally {
+      } catch { /* ignore */ } finally {
         setGenreLoading(false);
       }
     }
     setVisibleCount((prev) => prev + ITEMS_PER_PAGE);
-  };
+  }, [selectedGenre, filterType, genrePage, genres]);
 
+  // ── Handle type/format change ──
+  const handleTypeChange = useCallback((t: string) => {
+    setFilterType(t);
+    setVisibleCount(ITEMS_PER_PAGE);
+    setExtraItems([]);
+    setGenrePage(1);
+    if (t === 'Movie') {
+      ensureMovies();
+    }
+  }, [ensureMovies]);
+
+  // ── Search ──
   const performSearch = useCallback(async (q: string) => {
     if (!q.trim()) {
       setResults([]);
@@ -235,9 +212,7 @@ function SearchContent() {
   }, []);
 
   useEffect(() => {
-    if (initialQuery) {
-      performSearch(initialQuery);
-    }
+    if (initialQuery) performSearch(initialQuery);
     inputRef.current?.focus();
   }, [initialQuery, performSearch]);
 
@@ -254,38 +229,59 @@ function SearchContent() {
     e.preventDefault();
     if (debounceRef.current) clearTimeout(debounceRef.current);
     performSearch(query);
-    if (query.trim()) {
-      router.replace(`/search?q=${encodeURIComponent(query.trim())}`);
-    }
+    if (query.trim()) router.replace(`/search?q=${encodeURIComponent(query.trim())}`);
   };
 
-  // Filter + sort
-  const rawList = hasSearched ? results : exploreCatalog;
+  // ── Build final display list ──
+  // Source priority: search results > extra genre items merged with catalog
+  const baseCatalog = selectedGenre !== 'Semua' && extraItems.length > 0
+    ? (() => {
+        const map = new Map<string, Anime>(extraItems.map((a) => [(a.slug || a.id).toLowerCase(), a]));
+        catalog.forEach((a) => {
+          const key = (a.slug || a.id).toLowerCase();
+          if (!map.has(key)) map.set(key, a);
+        });
+        return Array.from(map.values());
+      })()
+    : filterType === 'Movie' && extraItems.length > 0
+    ? (() => {
+        const map = new Map<string, Anime>(extraItems.map((a) => [(a.slug || a.id).toLowerCase(), a]));
+        catalog.forEach((a) => {
+          const key = (a.slug || a.id).toLowerCase();
+          if (!map.has(key)) map.set(key, a);
+        });
+        return Array.from(map.values());
+      })()
+    : catalog;
+
+  const rawList = hasSearched ? results : baseCatalog;
+
   const filteredResults = rawList
     .filter((a) => {
+      // Type filter
       if (filterType !== 'Semua') {
-        const itemType = (a.type || 'TV').toLowerCase();
-        if (filterType.toLowerCase() === 'movie') {
-          if (!itemType.includes('movie') && !a.title.toLowerCase().includes('movie') && !a.title.toLowerCase().includes('the movie')) {
-            return false;
-          }
-        } else if (!itemType.includes(filterType.toLowerCase())) {
-          return false;
+        const itemType = (a.type || 'TV').toUpperCase();
+        const filterUpper = filterType.toUpperCase();
+        if (filterUpper === 'MOVIE') {
+          const isMovie = itemType.includes('MOVIE') || itemType.includes('FILM')
+            || (a.title || '').toUpperCase().includes(' MOVIE')
+            || (a.genres || []).some((g) => g.toUpperCase().includes('MOVIE'));
+          if (!isMovie) return false;
+        } else {
+          if (!itemType.includes(filterUpper)) return false;
         }
       }
+      // Status filter
       if (filterStatus !== 'Semua') {
-        const itemStatus = (a.status || '').toLowerCase();
-        if (filterStatus.toLowerCase() === 'complete' || filterStatus.toLowerCase() === 'completed') {
-          if (!itemStatus.includes('complet') && !itemStatus.includes('tamat') && !itemStatus.includes('selesai')) {
-            return false;
-          }
-        } else if (filterStatus.toLowerCase() === 'ongoing') {
-          if (!itemStatus.includes('ongo') && !itemStatus.includes('tayan') && !itemStatus.includes('rilis')) {
-            return false;
-          }
+        const s = (a.status || '').toLowerCase();
+        if (filterStatus === 'Complete') {
+          if (!s.includes('complet') && !s.includes('tamat') && !s.includes('selesai')) return false;
+        } else if (filterStatus === 'Ongoing') {
+          if (!s.includes('ongo') && !s.includes('tayan') && !s.includes('rilis')) return false;
         }
       }
-      if (selectedGenre !== 'Semua') {
+      // Genre filter (if using catalog, not direct genre fetch)
+      if (selectedGenre !== 'Semua' && extraItems.length === 0) {
         const genreList = Array.isArray(a.genres) ? a.genres : [];
         if (genreList.length > 0 && !genreList.some((g) => g.toLowerCase().includes(selectedGenre.toLowerCase()))) {
           return false;
@@ -294,17 +290,13 @@ function SearchContent() {
       return true;
     })
     .sort((a, b) => {
-      if (sortBy === 'az') return a.title.localeCompare(b.title);
-      if (sortBy === 'rating') {
-        const ra = parseFloat(a.rating ?? '0');
-        const rb = parseFloat(b.rating ?? '0');
-        return rb - ra;
-      }
+      if (sortBy === 'az') return (a.title || '').localeCompare(b.title || '');
+      if (sortBy === 'rating') return (parseFloat(b.rating ?? '0') - parseFloat(a.rating ?? '0'));
       return 0;
     });
 
   const displayedAnime = filteredResults.slice(0, visibleCount);
-  const hasMore = visibleCount < filteredResults.length || (!hasSearched && (selectedGenre !== 'Semua' || filterType === 'Movie'));
+  const hasMore = visibleCount < filteredResults.length || selectedGenre !== 'Semua' || filterType === 'Movie';
 
   return (
     <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-8 min-h-[85vh]">
@@ -312,11 +304,11 @@ function SearchContent() {
       <div className="flex items-center gap-3 mb-6">
         <div className="w-1.5 h-8 bg-primary rounded-full" />
         <div>
-          <h1 className="text-white text-2xl sm:text-3xl font-black">
-            Eksplorasi & Cari Anime
-          </h1>
+          <h1 className="text-white text-2xl sm:text-3xl font-black">Eksplorasi & Cari Anime</h1>
           <p className="text-gray-400 text-xs mt-0.5">
-            Jelajahi seluruh koleksi serial TV, Movie, dan OVA subtitle Indonesia terlengkap
+            {catalogLoaded
+              ? `${catalog.length}+ anime tersedia — serial TV, Movie, OVA, ONA subtitle Indonesia`
+              : 'Memuat koleksi anime...'}
           </p>
         </div>
       </div>
@@ -347,10 +339,10 @@ function SearchContent() {
         )}
       </form>
 
-      {/* Multi-Filters bar */}
+      {/* Filters */}
       <div className="bg-[#141414] border border-[#222] rounded-2xl p-4 sm:p-5 mb-8 space-y-4 shadow-lg">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          {/* Format / Type filter */}
+          {/* Format / Type */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Format:</span>
             <div className="flex flex-wrap gap-1.5">
@@ -370,7 +362,7 @@ function SearchContent() {
             </div>
           </div>
 
-          {/* Status filter */}
+          {/* Status */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Status:</span>
             <div className="flex flex-wrap gap-1.5">
@@ -384,7 +376,7 @@ function SearchContent() {
                       : 'bg-[#1a1a1a] text-gray-400 hover:text-white border border-[#2e2e2e]'
                   }`}
                 >
-                  {s === 'Complete' ? 'Selesai' : s === 'Ongoing' ? 'Tayang' : 'Semua'}
+                  {s === 'Complete' ? 'Selesai' : s === 'Ongoing' ? 'Sedang Tayang' : 'Semua'}
                 </button>
               ))}
             </div>
@@ -392,7 +384,7 @@ function SearchContent() {
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-4 pt-3.5 border-t border-[#202020]">
-          {/* Genre dropdown */}
+          {/* Genre */}
           {genres.length > 0 && (
             <div className="flex items-center gap-2">
               <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Genre:</span>
@@ -401,15 +393,16 @@ function SearchContent() {
                 onChange={(e) => handleGenreChange(e.target.value)}
                 className="bg-[#1a1a1a] border border-[#333] text-gray-200 text-xs rounded-xl px-3.5 py-2 focus:outline-none focus:border-primary font-medium"
               >
-                <option value="Semua">Semua Genre (Koleksi Lengkap)</option>
+                <option value="Semua">Semua Genre</option>
                 {genres.map((g) => (
                   <option key={g.slug} value={g.name}>{g.name}</option>
                 ))}
               </select>
+              {genreLoading && <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />}
             </div>
           )}
 
-          {/* Sort dropdown */}
+          {/* Sort */}
           <div className="flex items-center gap-2">
             <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Urutan:</span>
             <select
@@ -427,22 +420,25 @@ function SearchContent() {
 
       {/* Results Header */}
       <div className="flex items-center justify-between mb-5">
-        <p className="text-gray-400 text-xs sm:text-sm font-medium flex items-center gap-2">
+        <p className="text-gray-400 text-xs sm:text-sm font-medium">
           {hasSearched ? (
-            <>Menampilkan <strong className="text-white">{displayedAnime.length}</strong> dari <strong className="text-white">{filteredResults.length}</strong> hasil untuk &quot;{query}&quot;</>
+            <>Menampilkan <strong className="text-white">{displayedAnime.length}</strong>/{filteredResults.length} hasil untuk &quot;{query}&quot;</>
           ) : (
-            <>Koleksi Eksplorasi: <strong className="text-white">{displayedAnime.length}</strong> dari <strong className="text-white">{filteredResults.length}</strong> anime ({filterType})</>
+            <>
+              Menampilkan <strong className="text-white">{displayedAnime.length}</strong>/
+              <strong className="text-white">{filteredResults.length}</strong> anime
+              {filterType !== 'Semua' && <> · <span className="text-primary">{filterType}</span></>}
+              {filterStatus !== 'Semua' && <> · <span className="text-emerald-400">{filterStatus}</span></>}
+              {selectedGenre !== 'Semua' && <> · <span className="text-yellow-400">{selectedGenre}</span></>}
+            </>
           )}
-          {genreLoading && <span className="text-primary-light text-xs animate-pulse">Memuat anime baru...</span>}
         </p>
       </div>
 
       {/* Results Grid */}
       {loading && displayedAnime.length === 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-          {Array.from({ length: 18 }).map((_, i) => (
-            <AnimeCardSkeleton key={i} />
-          ))}
+          {Array.from({ length: 18 }).map((_, i) => <AnimeCardSkeleton key={i} />)}
         </div>
       ) : displayedAnime.length > 0 ? (
         <>
@@ -462,21 +458,20 @@ function SearchContent() {
             ))}
           </div>
 
-          {/* Load More Button */}
           {hasMore && (
             <div className="flex justify-center mt-10">
               <button
                 type="button"
                 onClick={handleLoadMore}
                 disabled={genreLoading}
-                className="px-8 py-3 bg-[#181818] hover:bg-primary hover:text-white border border-[#2e2e2e] text-gray-200 text-xs sm:text-sm font-bold rounded-2xl transition-all shadow-lg hover:scale-105"
+                className="px-8 py-3 bg-[#181818] hover:bg-primary hover:text-white border border-[#2e2e2e] text-gray-200 text-xs sm:text-sm font-bold rounded-2xl transition-all shadow-lg hover:scale-105 disabled:opacity-50"
               >
-                {genreLoading ? 'Memuat anime...' : 'Muat Lebih Banyak Anime ▾'}
+                {genreLoading ? 'Memuat...' : 'Muat Lebih Banyak Anime ▾'}
               </button>
             </div>
           )}
         </>
-      ) : (
+      ) : catalogLoaded ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <div className="w-16 h-16 rounded-full bg-[#181818] flex items-center justify-center text-gray-600 mb-4">
             <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -485,8 +480,18 @@ function SearchContent() {
           </div>
           <h3 className="text-white font-bold text-base mb-1">Tidak Ada Anime Yang Cocok</h3>
           <p className="text-gray-500 text-xs max-w-sm">
-            Coba sesuaikan filter format/genre atau gunakan kata kunci pencarian yang lain.
+            Coba sesuaikan filter format/genre atau gunakan kata kunci pencarian yang berbeda.
           </p>
+          <button
+            onClick={() => { setFilterType('Semua'); setFilterStatus('Semua'); setSelectedGenre('Semua'); }}
+            className="mt-4 text-xs text-primary hover:underline"
+          >
+            Reset semua filter
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+          {Array.from({ length: 18 }).map((_, i) => <AnimeCardSkeleton key={i} />)}
         </div>
       )}
     </div>

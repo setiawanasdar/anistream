@@ -59,10 +59,95 @@ router.get('/complete', async (req, res, next) => {
 router.get('/movies', async (req, res, next) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const { data, source } = await withFallback(fallbackOrder, 'getMovies', page);
-    res.json({ success: true, source, data });
+
+    // Gather movies from all enabled sources + multiple pages in parallel
+    const animeindoScraper = (() => { try { return require('../scrapers/animeindo'); } catch { return null; } })();
+    const otakudesuScraper = (() => { try { return require('../scrapers/otakudesu'); } catch { return null; } })();
+
+    const tasks = [];
+    if (animeindoScraper && typeof animeindoScraper.getMovies === 'function') {
+      tasks.push(animeindoScraper.getMovies(page).catch(() => []));
+      if (page === 1) {
+        tasks.push(animeindoScraper.getMovies(2).catch(() => []));
+        tasks.push(animeindoScraper.getMovies(3).catch(() => []));
+      }
+    }
+    if (otakudesuScraper && typeof otakudesuScraper.getComplete === 'function') {
+      // Otakudesu doesn't have a dedicated movie endpoint; skip gracefully
+    }
+
+    if (tasks.length === 0) {
+      const { data, source } = await withFallback(fallbackOrder, 'getMovies', page);
+      return res.json({ success: true, source, data });
+    }
+
+    const allResults = await Promise.all(tasks);
+    const merged = new Map();
+    allResults.flat().forEach((item) => {
+      const key = (item.slug || item.id || '').toLowerCase();
+      if (key && !merged.has(key)) merged.set(key, item);
+    });
+    const data = Array.from(merged.values()).filter((item) => {
+      const t = (item.type || '').toLowerCase();
+      return t.includes('movie') || t.includes('film') ||
+             (item.title || '').toLowerCase().includes(' movie') ||
+             (item.genres || []).some(g => g.toLowerCase().includes('movie'));
+    });
+
+    res.json({ success: true, source: 'animeindo', data: data.length > 0 ? data : allResults.flat().slice(0, 54) });
   } catch (err) {
     next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/anime/catalog
+// Aggregates all sources, all types (ongoing+complete+movies), pages 1-3
+// Returns 150-250 deduplicated anime for the Explore page
+// ---------------------------------------------------------------------------
+router.get('/catalog', async (req, res) => {
+  try {
+    const animeindoScraper = (() => { try { return require('../scrapers/animeindo'); } catch { return null; } })();
+    const otakudesuScraper = (() => { try { return require('../scrapers/otakudesu'); } catch { return null; } })();
+
+    const tasks = [];
+
+    // AnimeIndo: ongoing + complete + movies × pages 1-3
+    if (animeindoScraper) {
+      for (let p = 1; p <= 3; p++) {
+        if (typeof animeindoScraper.getOngoing === 'function') tasks.push(animeindoScraper.getOngoing(p).catch(() => []));
+        if (typeof animeindoScraper.getComplete === 'function') tasks.push(animeindoScraper.getComplete(p).catch(() => []));
+        if (typeof animeindoScraper.getMovies === 'function') tasks.push(animeindoScraper.getMovies(p).catch(() => []));
+      }
+    }
+
+    // Otakudesu: ongoing + complete p1-2
+    if (otakudesuScraper) {
+      if (typeof otakudesuScraper.getOngoing === 'function') tasks.push(otakudesuScraper.getOngoing(1).catch(() => []));
+      if (typeof otakudesuScraper.getComplete === 'function') {
+        tasks.push(otakudesuScraper.getComplete(1).catch(() => []));
+        tasks.push(otakudesuScraper.getComplete(2).catch(() => []));
+      }
+    }
+
+    // AniList popular + trending as extras
+    try {
+      tasks.push(anilist.getPopular().catch(() => []));
+      tasks.push(anilist.getTrending().catch(() => []));
+    } catch {}
+
+    const allResults = await Promise.all(tasks);
+    const merged = new Map();
+    allResults.flat().forEach((item) => {
+      if (!item || (!item.slug && !item.id)) return;
+      const key = (item.slug || item.id || '').toLowerCase().replace(/\s+/g, '-');
+      if (key && !merged.has(key)) merged.set(key, item);
+    });
+
+    const data = Array.from(merged.values());
+    res.json({ success: true, source: 'catalog', data });
+  } catch (err) {
+    res.json({ success: true, source: 'catalog', data: [] });
   }
 });
 
